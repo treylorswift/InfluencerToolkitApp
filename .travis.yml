@@ -19,11 +19,6 @@ script:
     npm install
     npx electron-builder
 
-after_success:
-  - |
-    find . |grep .sh
-    bash ./travis_deploy.sh
-
 env:
   global:
   - GH_USER: treylorswift
@@ -35,3 +30,11 @@ before_cache:
 branches:
   except:
     - "/^v\\d+\\.\\d+\\.\\d+$/"
+
+deploy:
+  provider: pages
+  skip_cleanup: true
+  github_token: $GH_TOKEN  # Set in the settings page of your repository, as a secure variable
+  keep_history: true
+  on:
+    branch: master
