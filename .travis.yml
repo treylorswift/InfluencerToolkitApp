@@ -19,6 +19,14 @@ script:
     npm install
     npx electron-builder
 
+after_success:
+- bash ./scripts/travis_deploy.sh
+
+env:
+  global:
+  - GH_USER: treylorswift
+  - GH_REPO: InfluencerToolkitApp
+
 before_cache:
   - rm -rf $HOME/.cache/electron-builder/wine
 
