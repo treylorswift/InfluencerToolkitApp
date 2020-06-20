@@ -20,7 +20,7 @@ script:
     npx electron-builder
 
 after_success:
-- bash ./scripts/travis_deploy.sh
+- bash ./travis_deploy.sh
 
 env:
   global:
