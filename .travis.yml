@@ -8,22 +8,16 @@ matrix:
         - ELECTRON_BUILDER_CACHE=$HOME/.cache/electron-builder
 
 cache:
-  yarn: true
   directories:
     - node_modules
     - $HOME/.cache/electron
     - $HOME/.cache/electron-builder
 
-install:
-  - |
-    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-      brew install yarn;
-    fi
 
 script:
   - |
-    yarn install;
-    yarn release;
+    npm install
+    npx electron-builder
 
 before_cache:
   - rm -rf $HOME/.cache/electron-builder/wine
