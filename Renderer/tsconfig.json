@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+        "module": "AMD",
+        "target": "es2018",
+        "lib": [ "es2018", "DOM" ],
+        "sourceMap": true,
+        "outFile": "../tsBuild/Main/UI.js"
+    },
+    "files": [
+        "ITKRenderer.ts",
+        "SVDOMComponent.ts",
+        "SVDOMHost.ts",
+        "../Shared/IPCAPI.ts"
+    ]
+}

@@ -1,0 +1,29 @@
+﻿<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'unsafe-inline' 'self'; script-src 'unsafe-inline' 'self'">
+    <meta http-equiv="X-Content-Security-Policy" content="default-src 'unsafe-inline' 'self'; script-src 'unsafe-inline' 'self'">
+    <title>Influencer Toolkit</title>
+    <script src="require.js"></script>
+    <script src="UI.js"></script>
+    <script>
+
+    var g_site = null;
+
+    async function main()
+    {
+        requirejs(["Renderer/ITKRenderer"], function(module) {
+            g_site = new module.Site();
+            g_site.onload();
+        });
+
+    }
+    </script>
+  </head>
+  <body onload="main();">
+  <div id="site">
+  </div>
+  </bodyonload="main();">
+</html>
