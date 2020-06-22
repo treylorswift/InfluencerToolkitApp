@@ -7,7 +7,7 @@ import * as Twitter from 'twitter-lite';
 
 import {TwitterFollower} from './TwitterUser'
 import {TwitterUser} from './TwitterUser'
-import {AppPermissionLevel} from './TwitterUser'
+import {PermissionLevel} from './TwitterUser'
 
 import {DelaySeconds} from './Delay'
 
@@ -161,7 +161,7 @@ export class MessagingCampaignManager
     constructor(user:TwitterUser, campaign:MessagingCampaign)
     {
         this.user = user;
-        this.twitter = user.GetTwitterClient();
+        this.twitter = user.GetTwitterApi();
         this.campaign = campaign;
         this.recipients = null;
 
@@ -424,6 +424,8 @@ export class MessagingCampaignManager
 
     async Run()
     {
+        console.log('nope.');
+        /*
         console.log("Beginning campaign: " + this.campaign.campaign_id);
         
         //if the campaign is a live campaign and we are lacking the necessary permissions, issue a warning and
@@ -571,6 +573,7 @@ export class MessagingCampaignManager
         console.log(`Preparing to contact ${this.totalToSend} followers`);
 
         this.ProcessMessages();
+        */
     }
 }
 

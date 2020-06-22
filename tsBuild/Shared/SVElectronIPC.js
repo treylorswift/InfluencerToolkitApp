@@ -4,8 +4,20 @@ const SVRP = require("./SVRP.js");
 var g_logAll = true;
 if (g_logAll)
     console.log("SVElectronIPC logging all calls");
+//the SVElectronIPC is used to make calls, and receive responses,
+//both from the renderer process to the main process, and the main process to the renderer process
+//
+//they both use this same .ts file.
+//
+//the logic here at the top establishes sendFunc and setReceiveFunc
+//sendFunc - what the rest of the code below uses to send calls to the other side
+//setReceiveFunc - the code below says "hey, incoming calls come here..." by providing a function argument to setReceiveFunc
+//
+//
 let sendFunc = null;
 let setReceiveFunc = null;
+//wire into window.IPC (if the renderer process)
+//if that fails, wire ino
 try {
     //in the browser, this will attach to the IPC methods
     //established in preload.js
@@ -17,8 +29,12 @@ try {
         console.log("SVElectronIPC in browser - setReceiveFunc not found!");
 }
 catch (err) {
-    //outside the browser, window. will throw an error
-    //so we attach to the node modules like this
+    //outside the browser, assume this is the main process
+    //the below 'require' statements will actually work in the main process
+    //
+    //note that the main process only sends messages to the main browser window,
+    //which must be exported from Main.ts and established by the time the below
+    //code runs
     const main = require("../Main/Main");
     const electron = require("electron");
     sendFunc = (arg) => {
@@ -60,8 +76,9 @@ class PromiseFunctions {
         this.finished = true;
     }
 }
-class _SVElectronIPC {
+class SVElectronIPC extends SVRP.Transport {
     constructor() {
+        super();
         this.callHandlers = new Map();
         this.responseHandlers = new Map();
         this.sequence = 0;
@@ -87,11 +104,11 @@ class _SVElectronIPC {
         });
     }
     //setup a function to handle a particular incoming json call
-    SetHandler(c, func) {
+    SetHandler(className, func) {
         //have to temporarily instantiate a call to get its method
         //little inefficient but better to do this way for type safety
-        var temp = new c();
-        this.callHandlers.set(temp.method, func);
+        let tempInstance = new className();
+        this.callHandlers.set(tempInstance.method, func);
     }
     async HandleIncomingCall(json) {
         if (g_logAll)
@@ -127,9 +144,11 @@ class _SVElectronIPC {
         this.responseHandlers.delete(json.sequence);
     }
     CallNoResponse(c) {
+        //we determine the contents of the 'sequence'
         //main difference is that a sequence is not added to the call json,
         //so the other side will know not to send back a response
         //we will also not create a response handler in anticipation of it..
+        delete c.sequence;
         if (g_logAll)
             console.log('CallNoResponse: ' + JSON.stringify(c));
         //store these promise functions in our map so that this Call can be resolved later
@@ -138,6 +157,7 @@ class _SVElectronIPC {
     }
     Call(c) {
         return new Promise((resolve, reject) => {
+            //we determine the contents of the 'sequence'
             c.sequence = this.sequence;
             if (g_logAll)
                 console.log('Call: ' + JSON.stringify(c));
@@ -149,5 +169,5 @@ class _SVElectronIPC {
         });
     }
 }
-exports.SVElectronIPC = new _SVElectronIPC();
+exports.SVElectronIPC = SVElectronIPC;
 //# sourceMappingURL=SVElectronIPC.js.map

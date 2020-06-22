@@ -1,5 +1,16 @@
 "use strict";
+//classes and types used for remote procedure calls.. calls that have to cross some kind of boundary
+//whether it be inter process communication, websocket communication, etc
 Object.defineProperty(exports, "__esModule", { value: true });
+class Call {
+    Call() {
+        return Transport.g_transport.Call(this);
+    }
+    CallNoResponse() {
+        return Transport.g_transport.CallNoResponse(this);
+    }
+}
+exports.Call = Call;
 var Error;
 (function (Error) {
     Error["NotLoggedIn"] = "NotLoggedIn";
@@ -41,4 +52,16 @@ class Response {
     }
 }
 exports.Response = Response;
+class Transport {
+}
+Transport.g_transport = null;
+exports.Transport = Transport;
+function SetTransport(t) {
+    Transport.g_transport = t;
+}
+exports.SetTransport = SetTransport;
+function SetHandler(className, func) {
+    Transport.g_transport.SetHandler(className, func);
+}
+exports.SetHandler = SetHandler;
 //# sourceMappingURL=SVRP.js.map

@@ -1,6 +1,24 @@
-export interface Call
+//classes and types used for remote procedure calls.. calls that have to cross some kind of boundary
+//whether it be inter process communication, websocket communication, etc
+
+export class Call
 {
+    Call():Promise<Response>
+    {
+        return Transport.g_transport.Call(this);
+    }
+
+    CallNoResponse()
+    {
+        return Transport.g_transport.CallNoResponse(this);
+    }
+
     method:string
+    //implementations of Call should only write to the 'args' member.
+    args?:any
+
+    //the method and sequence members are goverened by whatever is marshalling the calls
+    //across whatever boundary is being traversed
     sequence?:number
 }
 
@@ -65,3 +83,24 @@ export type TCallHandler<inT,outT> = (json:inT)=>Promise<outT>
 
 //a function that takes receipt of a response once a call is made and the results are returned
 export type ResponseHandler = (json:Response)=>void
+
+export abstract class Transport
+{
+    static g_transport:Transport = null;
+
+    abstract SetHandler<T extends {new (...args: any):Call}>(className: T, func:CallHandler);
+    abstract Call<T extends Call>(c:T):Promise<Response>;
+    abstract CallNoResponse(c:Call);
+
+}
+
+export function SetTransport(t:Transport)
+{
+    Transport.g_transport = t;
+}
+
+export function SetHandler<T extends {new (...args: any):Call}>(className: T, func:CallHandler)
+{
+    Transport.g_transport.SetHandler<T>(className,func);
+}
+

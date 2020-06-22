@@ -2,7 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const crypto = require("crypto");
 const fs = require("fs");
-const TwitterUser_1 = require("./TwitterUser");
 const Delay_1 = require("./Delay");
 class MessagingCampaign {
     static fromJSON(json) {
@@ -200,7 +199,7 @@ class MessagingCampaignManager {
             }, delay.timeToWait);
         };
         this.user = user;
-        this.twitter = user.GetTwitterClient();
+        this.twitter = user.GetTwitterApi();
         this.campaign = campaign;
         this.recipients = null;
         this.nextRecipientIndex = 0;
@@ -287,69 +286,100 @@ class MessagingCampaignManager {
         }
     }
     async Run() {
+        console.log('nope.');
+        /*
         console.log("Beginning campaign: " + this.campaign.campaign_id);
+        
         //if the campaign is a live campaign and we are lacking the necessary permissions, issue a warning and
         //force execution to be dryRun
-        if (this.campaign.dryRun !== true && this.user.GetPermissionLevel() !== TwitterUser_1.AppPermissionLevel.ReadWriteDirectMessages) {
+        if (this.campaign.dryRun!==true && this.user.GetPermissionLevel()!==AppPermissionLevel.ReadWriteDirectMessages)
+        {
             this.campaign.dryRun = true;
             console.log(`*** App permissions do not allow direct messages, campaign will be forced to execute as a dry run ***`);
             console.log(`*** Progress will be displayed but messages will not actually be sent ***`);
             console.log(`*** Visit https://apps.twitter.com and update permissions in order to send direct messages ***`);
         }
-        else if (this.campaign.dryRun === true)
+        else
+        if (this.campaign.dryRun===true)
             console.log("*** campaign.dryRun=true, progress will be displayed but messages will not actually be sent ***");
+
         console.log("Campaign message: " + this.campaign.message);
+
         //get the users followers
         console.log(`Obtaining followers for ${this.user.GetScreenName()}..`);
         this.recipients = await this.user.GetFollowers();
+
         //sanity check..
-        if (this.recipients.length === 0) {
+        if (this.recipients.length===0)
+        {
             console.log(`${this.user.GetScreenName()} doesn't have any followers, there are no followers to contact`);
             return;
         }
+
         //need to remove from the followers list any recipients who we have already been contacted in this campaign
+        
         //load the message history now so we can determine who has already been contacted
         this.LoadMessageHistory();
+
         //there is room to optimize here by filtering out these users as they are retreived
         //from storage but for now this is ok
         let numAlreadyContacted = 0;
-        for (var i = 0; i < this.recipients.length;) {
-            if (this.messageHistory.HasRecipientRecievedCampaign(this.recipients[i].id_str, this.campaign.campaign_id)) {
-                this.recipients.splice(i, 1);
+        for (var i=0; i<this.recipients.length; )
+        {
+            if (this.messageHistory.HasRecipientRecievedCampaign(this.recipients[i].id_str, this.campaign.campaign_id))
+            {
+                this.recipients.splice(i,1);
                 numAlreadyContacted++;
             }
-            else {
+            else
+            {
                 i++;
             }
         }
+
         //if we already contacted some of the followers, spew a little info about that
-        if (numAlreadyContacted > 0) {
+        if (numAlreadyContacted>0)
+        {
             //have we already contacted *everybody*?
-            if (this.recipients.length === 0) {
+            if (this.recipients.length===0)
+            {
                 console.log(`Already contacted all ${numAlreadyContacted} followers for this campaign, no one left to contact`);
                 return;
             }
+
             console.log(`Already contacted ${numAlreadyContacted} followers for this campaign, limiting campaign to remaining ${this.recipients.length} followers`);
         }
+
         //apply any filter tags
-        if (this.campaign.filter && this.campaign.filter.tags && this.campaign.filter.tags.length > 0) {
+        if (this.campaign.filter && this.campaign.filter.tags && this.campaign.filter.tags.length>0)
+        {
             //just build a new array of followers who pass the filter test(s)
-            let filteredRecipients = new Array();
+            let filteredRecipients = new Array<TwitterFollower>();
+
             let keepTags = this.campaign.filter.tags;
+
             console.log("Applying filter, only sending to followers matching the following tags: " + keepTags.join(' '));
+
             //process all tags in lowercase
-            for (var k = 0; k < keepTags.length; k++) {
+            for (var k=0; k<keepTags.length; k++)
+            {
                 keepTags[k] = keepTags[k].toLowerCase();
             }
+
             //iterate over all recipients, remove those that dont match any of the tags
-            for (var i = 0; i < this.recipients.length; i++) {
+            for (var i=0; i<this.recipients.length; i++)
+            {
                 let matched = false;
+
                 //look at each tag in the recipients bio
                 let userTags = this.recipients[i].bio_tags;
-                for (var j = 0; j < userTags.length; j++) {
+                for (var j=0; j<userTags.length; j++)
+                {
                     //does it match any of the tags we're keeping?
-                    for (var k = 0; k < keepTags.length; k++) {
-                        if (userTags[j].toLowerCase() === keepTags[k]) {
+                    for (var k=0; k<keepTags.length; k++)
+                    {
+                        if (userTags[j].toLowerCase()===keepTags[k])
+                        {
                             //matched a tag, move this user to the filtered list
                             filteredRecipients.push(this.recipients[i]);
                             matched = true;
@@ -361,37 +391,51 @@ class MessagingCampaignManager {
                         break;
                 }
             }
+
             //proceed only with the filtered recipients
             this.recipients = filteredRecipients;
             console.log(`${this.recipients.length} eligible followers contained matching tags`);
         }
-        if (this.recipients.length === 0) {
+
+        if (this.recipients.length===0)
+        {
             console.log("No followers left to contact, try another campaign or filter using different tags");
             return;
         }
+
         //as cached, the followers are ordered by most recently followed (according to api docs)
         //so we only need to sort if 'influence' is specified
-        if (this.campaign.sort === 'influence') {
+        if (this.campaign.sort==='influence')
+        {
             console.log('Sorting followers by influence');
-            function influenceSort(a, b) {
-                if (a.followers_count > b.followers_count)
+            function influenceSort(a:TwitterFollower,b:TwitterFollower)
+            {
+                if (a.followers_count>b.followers_count)
                     return -1;
-                if (a.followers_count < b.followers_count)
+                if (a.followers_count<b.followers_count)
                     return 1;
                 return 0;
             }
+
             this.recipients.sort(influenceSort);
         }
-        else {
+        else
+        {
             console.log('Sorting followers by most-recently-followed');
         }
+
+        
         this.totalSent = 0;
         this.totalToSend = this.recipients.length;
+
         //if the campaign defines a limit, we stay within that limit
-        if (this.campaign.count && this.campaign.count < this.totalToSend)
+        if (this.campaign.count && this.campaign.count<this.totalToSend)
             this.totalToSend = this.campaign.count;
+        
         console.log(`Preparing to contact ${this.totalToSend} followers`);
+
         this.ProcessMessages();
+        */
     }
 }
 exports.MessagingCampaignManager = MessagingCampaignManager;

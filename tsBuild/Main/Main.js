@@ -2,10 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs = require("fs");
 const TwitterAuth = require("../Shared/TwitterAuth");
+const TwitterUser_1 = require("./TwitterUser");
 const Twitter = require("twitter-lite");
 //once we obtain app auth and user auth keys, we won't require login
 let g_appAuth = null;
 let g_userLogin = null;
+let g_twitterUser = null;
 let g_appAuthFileName = './app_auth.json';
 let g_userLoginFileName = './user_auth.json';
 async function ValidateAppAndUserAuth() {
@@ -31,23 +33,13 @@ async function ValidateAppAndUserAuth() {
     let user_login = TwitterAuth.TryLoadUserLogin(g_userLoginFileName);
     if (!user_login)
         return false;
-    try {
-        //@ts-ignore
-        let testClient = new Twitter({
-            consumer_key: app_auth.consumer_key,
-            consumer_secret: app_auth.consumer_secret,
-            access_token_key: user_login.access_token_key,
-            access_token_secret: user_login.access_token_secret // from your User (oauth_token_secret)
-        });
-        //verify that the app_auth and user_auth info is useable
-        var verifyOK = await testClient.get("account/verify_credentials");
-        //no error means the keys were valid
+    //ok see if we can create a TwitterUser using the app and user keys
+    let user = new TwitterUser_1.TwitterUser();
+    let initOK = await user.Init(app_auth, user_login);
+    if (initOK) {
         g_userLogin = user_login;
+        g_twitterUser = user;
         return true;
-    }
-    catch (err) {
-        console.log("Error validating stored app auth keys:");
-        console.error(err);
     }
     return false;
 }
@@ -64,20 +56,52 @@ exports.g_mainWindow = null;
 const SVElectronIPC_1 = require("../Shared/SVElectronIPC");
 const IPCAPI = require("../Shared/IPCAPI");
 const SVRP = require("../Shared/SVRP");
-SVElectronIPC_1.SVElectronIPC.SetHandler(IPCAPI.GetAppAuth, async (json) => {
+//route all SVRP.Call/SetHandlers through SVElectronIPC
+SVRP.SetTransport(new SVElectronIPC_1.SVElectronIPC());
+/////////////////
+//GetAppAuth - returns Twitter App API keys
+////////////////
+SVRP.SetHandler(IPCAPI.GetAppAuth, async (json) => {
     return { success: true, appAuth: g_appAuth };
 });
-SVElectronIPC_1.SVElectronIPC.SetHandler(IPCAPI.GetUserLogin, async (json) => {
+////////////////
+//GetUserLogin - returns Twitter user API keys, twitter id_str and screen_name (obtained via oauth and verify_credentials api call)
+//////////////
+SVRP.SetHandler(IPCAPI.GetUserLoginCall, async (json) => {
     return { success: true, userLogin: g_userLogin };
 });
+/////////////////////////
+//GetFollowerCacheStatus
+////////////////
+SVRP.SetHandler(IPCAPI.GetFollowerCacheStatusCall, async (json) => {
+    if (!g_twitterUser) {
+        console.log("Cant call GetFollowerCacheStatus when g_twitterUser is invalid");
+        return { success: false, status: IPCAPI.FollowerCacheStatusEnum.None, completionPercent: 0, error: SVRP.Error.Internal };
+    }
+    let status = g_twitterUser.GetFollowerCache().GetStatus();
+    return { success: true, status: status.status, completionPercent: status.completionPercent };
+});
+/////////////
+//BuildCache
+///////////////
+SVRP.SetHandler(IPCAPI.BuildCacheCall, async (c) => {
+    if (!g_twitterUser) {
+        console.log("Cant call BuildCacheCall when g_twitterUser is invalid");
+        return { success: false, error: SVRP.Error.Internal };
+    }
+    g_twitterUser.GetFollowerCache().BuildFollowerCache().then((value) => {
+        console.log("build cache complete");
+    });
+    return { success: true };
+});
 //when the renderer attempts a login, it includes the Twitter app api keys
-SVElectronIPC_1.SVElectronIPC.SetHandler(IPCAPI.Login, async (c) => {
+SVRP.SetHandler(IPCAPI.LoginCall, async (c) => {
     //verify that the app keys are valid before attempting to log the user in via oauth
     try {
         //@ts-ignore
         let testClient = new Twitter({
-            consumer_key: c.appAuth.consumer_key,
-            consumer_secret: c.appAuth.consumer_secret
+            consumer_key: c.args.appAuth.consumer_key,
+            consumer_secret: c.args.appAuth.consumer_secret
         });
         const response = await testClient.getBearerToken();
         //if there's no error by now, the keys were good.. continue below..
@@ -91,8 +115,8 @@ SVElectronIPC_1.SVElectronIPC.SetHandler(IPCAPI.Login, async (c) => {
     //no error means the keys were valid
     //store them on disk for later use
     try {
-        fs.writeFileSync(g_appAuthFileName, JSON.stringify(c.appAuth, null, 2));
-        g_appAuth = c.appAuth;
+        fs.writeFileSync(g_appAuthFileName, JSON.stringify(c.args.appAuth, null, 2));
+        g_appAuth = c.args.appAuth;
     }
     catch (err) {
         let msg = "Error saving Twitter api API keys to disk";
@@ -105,8 +129,8 @@ SVElectronIPC_1.SVElectronIPC.SetHandler(IPCAPI.Login, async (c) => {
     let oauthResult = null;
     try {
         let info = {
-            key: c.appAuth.consumer_key,
-            secret: c.appAuth.consumer_secret
+            key: c.args.appAuth.consumer_key,
+            secret: c.args.appAuth.consumer_secret
         };
         const oauth = require(`oauth-electron-twitter`);
         oauthWindow = new electron_2.BrowserWindow({ webPreferences: { nodeIntegration: false } });
@@ -122,32 +146,23 @@ SVElectronIPC_1.SVElectronIPC.SetHandler(IPCAPI.Login, async (c) => {
         return { success: false, userLogin: null, error: SVRP.Error.Internal, errorMessage: "Twitter Login Failed" };
     }
     //now verify we can use these keys
-    let verifyResult = null;
-    try {
-        //@ts-ignore
-        let testClient = new Twitter({
-            consumer_key: c.appAuth.consumer_key,
-            consumer_secret: c.appAuth.consumer_secret,
-            access_token_key: oauthResult.token,
-            access_token_secret: oauthResult.tokenSecret
-        });
-        //verify that the app_auth and user_auth info is useable
-        verifyResult = await testClient.get("account/verify_credentials");
-    }
-    catch (err) {
-        console.log("verify_credentials failed");
-        console.error(err);
+    let user = new TwitterUser_1.TwitterUser();
+    let initOK = await user.Init(g_appAuth, g_userLogin);
+    if (!initOK) {
         return { success: false, userLogin: null, error: SVRP.Error.Internal, errorMessage: "Unable to verify Twitter user credentials" };
     }
     try {
         let userLogin = {
             access_token_key: oauthResult.token,
             access_token_secret: oauthResult.tokenSecret,
-            id_str: verifyResult.id_str,
-            screen_name: verifyResult.screen_name
+            id_str: user.GetIdStr(),
+            screen_name: user.GetScreenName()
         };
-        fs.writeFileSync(g_userLoginFileName, JSON.stringify(userLogin, null, 2));
+        //if they requested to store the keys, store them
+        if (c.args.saveUserAuth)
+            fs.writeFileSync(g_userLoginFileName, JSON.stringify(userLogin, null, 2));
         g_userLogin = userLogin;
+        g_twitterUser = user;
         return { success: true, userLogin: userLogin };
     }
     catch (err) {

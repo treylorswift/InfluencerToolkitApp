@@ -46,6 +46,7 @@ export abstract class SVDOMComponent
         catch (err)
         {
             console.log(`MapEvent error - name: "${err.name}" message: "${err.message}`);
+            console.error(err);
         }
     }
 

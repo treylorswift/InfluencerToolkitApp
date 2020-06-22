@@ -8,8 +8,12 @@
     },
     "files": [
         "ITKRenderer.ts",
+        "HomePage.ts",
         "SVDOMComponent.ts",
         "SVDOMHost.ts",
-        "../Shared/IPCAPI.ts"
+        "../Shared/SVElectronIPC.ts",
+        "../Shared/IPCAPI.ts",
+        "../Shared/TwitterAuth.ts",
+        "../Shared/SVRP.ts"
     ]
 }

@@ -7,8 +7,15 @@
         "outDir": "../tsBuild"
     },
     "files": [
+        "Delay.ts",
         "Main.ts",
-        "TwitterUser.ts"
+        "MessagingCampaign.ts",
+        "TwitterFollowerDB.ts",
+        "TwitterUser.ts",
+        "../Shared/SVElectronIPC.ts",
+        "../Shared/IPCAPI.ts",
+        "../Shared/TwitterAuth.ts",
+        "../Shared/SVRP.ts"
     ],
     "exclude": [
     ]
