@@ -1,4 +1,4 @@
-# Influencer Toolkit Desktop App
+# Influencer Toolkit (Desktop App)
 
 Influencer Toolkit is an influencer marketing desktop application that automates sending of direct messages to your Twitter followers, with a focus on soliciting mailing list / newsletter signups. Send up to 1000 messages per day (per Twitter guidelines).
 
