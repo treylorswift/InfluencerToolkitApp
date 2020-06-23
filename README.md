@@ -38,6 +38,7 @@ Influencer Toolkit is an influencer marketing desktop application that automates
 4. `npm electron-rebuild` (better-sqlite3 is a native module and depending on your node version
 5. Go to <https://apps.twitter.com> and create a Twitter app for testing. Generate API keys with read, write, and Direct Message permissions.
 6. `npm start` to launch the app
+7. To package your own Electron app installer, use `npm run dist`
 
 ## Credits
 
