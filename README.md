@@ -6,9 +6,9 @@ Influencer Toolkit is an influencer marketing desktop application that automates
 
 - Node.js/Electron cross platform application
 
-- Integrates with "Influencer Toolkit Signup", a web app for managing newsletter sign ups at https://itk-signup.herokuapp.com. Quickly create a newsletter sign up page and send the link to your followers with the Influencer Toolkit Desktop App. You'll be notified by email when people sign up.
-
 - Downloads your complete follower list from Twitter at roughly 300k followers per hour (per Twitter limits). Download is resumable if interrupted. Followers can be updated/re-downloaded again later.
+
+- Integrates with "Influencer Toolkit Signup", a web app for managing newsletter sign ups at https://itk-signup.herokuapp.com. Quickly create a newsletter sign up page and send the link to your followers with the Influencer Toolkit Desktop App. You'll be notified by email when people sign up.
 
 - Followers are displayed in a table and can be sorted and filtered in various ways. Sort by "Most Followers" or "Most Recently Followed". Filter by entering tags which will be matched against each user's Twitter bio.
 
