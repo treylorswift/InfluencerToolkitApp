@@ -1,23 +1,26 @@
-import {SVDOMHost} from "./SVDOMHost.js"
+import {DOMSite} from "./DOMSite.js"
 
-export class SVDOMPopupHandle
+export class DOMPopupHandle
 {
     handle:string;
     static count:number = 0;
 
     constructor()
     {
-        this.handle = 'popup_'+SVDOMPopupHandle.count;
-        SVDOMPopupHandle.count++;
+        this.handle = 'popup_'+DOMPopupHandle.count;
+        DOMPopupHandle.count++;
     }
 }
 
-export abstract class SVDOMComponent
-{
-    parent:SVDOMComponent;
-    site:SVDOMHost;
 
-    constructor(parent:SVDOMComponent)
+export type DOMComponentConstructor = new(parent:DOMComponent)=>DOMComponent;
+
+export abstract class DOMComponent
+{
+    parent:DOMComponent;
+    site:DOMSite;
+
+    constructor(parent:DOMComponent)
     {
         this.parent = parent;
         
@@ -27,7 +30,7 @@ export abstract class SVDOMComponent
             this.site = null;
     }
 
-    GetSite():SVDOMHost
+    GetSite():DOMSite
     {
         return this.site;
     }
@@ -50,9 +53,9 @@ export abstract class SVDOMComponent
         }
     }
 
-    DisplayPopupComponent(x:number,y:number,component:SVDOMComponent):SVDOMPopupHandle
+    DisplayPopupComponent(x:number,y:number,component:DOMComponent):DOMPopupHandle
     {
-        var h = new SVDOMPopupHandle();
+        var h = new DOMPopupHandle();
         var parent_handle = h.handle;
         var content_handle = h.handle + '_content';
 
@@ -92,7 +95,7 @@ export abstract class SVDOMComponent
         return h;
     }
 
-    ClosePopupComponent(h?:SVDOMPopupHandle)
+    ClosePopupComponent(h?:DOMPopupHandle)
     {
         var popupModal = document.getElementById("popup-modal");
         if (!popupModal)
@@ -119,7 +122,7 @@ export abstract class SVDOMComponent
         this.DisplayModalComponent(new StringMessageComponent(this,message));
     }
 
-    DisplayModalComponent(component:SVDOMComponent)
+    DisplayModalComponent(component:DOMComponent)
     {
         var modal = document.getElementById('modal');
         var modalContent = document.getElementById('modal-content');
@@ -156,11 +159,11 @@ export abstract class SVDOMComponent
 
 }
 
-class StringMessageComponent extends SVDOMComponent
+class StringMessageComponent extends DOMComponent
 {
     message:string;
 
-    constructor(parent:SVDOMComponent,message:string)
+    constructor(parent:DOMComponent,message:string)
     {
         super(parent);
         this.message = message;
@@ -171,7 +174,3 @@ class StringMessageComponent extends SVDOMComponent
         em.innerHTML = this.message;
     }
 }
-
-
-
-export type SVDOMComponentConstructor = new(parent:SVDOMComponent)=>SVDOMComponent;

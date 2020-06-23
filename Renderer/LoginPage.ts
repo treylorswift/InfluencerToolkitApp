@@ -1,12 +1,7 @@
-import * as IPCAPI from "../Shared/IPCAPI.js"
-import * as ClientApi from "../Shared/ClientApi.js"
-import * as SVRP from "../Shared/SVRP.js"
-import { SVDOMComponent } from "./SVDOMComponent.js"
-import { SVDOMHost } from "./SVDOMHost.js"
-import { SVElectronIPC } from "../Shared/SVElectronIPC.js";
-import {HomePage} from "./HomePage.js"
+import * as ServerApi from "../Shared/ServerApi.js"
+import { DOMComponent } from "./DOMComponent.js"
 
-class LoginPage extends SVDOMComponent
+export class LoginPage extends DOMComponent
 {
     ckey:HTMLInputElement = null;
     csec:HTMLInputElement = null;
@@ -25,7 +20,7 @@ class LoginPage extends SVDOMComponent
         };
         
 
-        let result = await IPCAPI.Login(args);
+        let result = await ServerApi.Login(args);
         
         if (!result.userLogin)
         {
@@ -72,7 +67,7 @@ class LoginPage extends SVDOMComponent
         //previous login worked, or partially worked with good app keys but perhaps a bad user password)
         try
         {
-            let getAppAuthResult = await IPCAPI.GetAppAuth();
+            let getAppAuthResult = await ServerApi.GetAppAuth();
             if (getAppAuthResult.appAuth)
             {
                 this.ckey.value = getAppAuthResult.appAuth.consumer_key;
@@ -87,91 +82,4 @@ class LoginPage extends SVDOMComponent
     }
 }
 
-
-export class Site extends SVDOMHost
-{
-    routerContentElement:HTMLElement;
-    
-    private static g_site:Site = null;
-    static GetSite():Site
-    {
-        return Site.g_site;
-    }
-
-    constructor()
-    {
-        super();
-        if (Site.g_site)
-        {
-            console.log("Site.g_site already exists, should never have multiple Site instantiations");
-            return;
-        }
-        Site.g_site = this;
-
-        this.routerContentElement = null;
-
-        var map = 
-        {
-            "/":HomePage,
-            "/login":LoginPage,
-        };
-
-        this.InitRoutes(map);
-
-        window.addEventListener('popstate', (event) =>
-        {
-            //console.log(inspect(event));
-            this.RouteTo(event.state.path,{pushState:false});
-        }, false);
-    }
-
-    GetSite():SVDOMHost
-    {
-        return this;
-    }
-
-    GetRouteContentElement():HTMLElement
-    {
-        return this.routerContentElement;
-    }
-    
-    async Render(em:HTMLElement)
-    {
-        try
-        {
-            //apply the title bar and router content div
-            em.innerHTML = `
-                <div id="routerContentId"></div>`;
-
-            this.routerContentElement = em.querySelector('#routerContentId');   
-
-            //first make sure our session cookie is valid and we're logged in
-            let userLoginResponse = await IPCAPI.GetUserLogin();
-            
-            //if they're not logged in, we either tell them that they're not authorized, or show them
-            //the login page where they can try to login
-            if (!userLoginResponse.userLogin)
-            {
-                //render the login page
-                this.RouteTo("/login");
-                return;
-            }
-                
-            //default route, go to /home            
-            await this.RouteTo("/");
-        }
-        catch (err)
-        {
-            console.log("error");
-        }
-    }
-
-    async onload()
-    {
-        SVRP.SetTransport(new SVElectronIPC());
-
-        this.Render(document.getElementById("site"));
-    }
-
-}
 

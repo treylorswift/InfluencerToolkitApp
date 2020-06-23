@@ -7,13 +7,18 @@
         "outFile": "../tsBuild/Main/Renderer.js"
     },
     "files": [
-        "Renderer.ts",
+        "Site.ts",
+        "LoginPage.ts",
         "HomePage.ts",
-        "SVDOMComponent.ts",
-        "SVDOMHost.ts",
-        "../Shared/SVElectronIPC.ts",
-        "../Shared/IPCAPI.ts",
-        "../Shared/TwitterAuth.ts",
-        "../Shared/SVRP.ts"
+        "ProgressComponent.ts",
+        "QueryComponent.ts",
+        "CacheStatusComponent.ts",
+        "DOMComponent.ts",
+        "DOMSite.ts",
+        "../Shared/RPC.ts",
+        "../Shared/ElectronIPC.ts",
+        "../Shared/ServerApi.ts",
+        "../Shared/ClientApi.ts",
+        "../Shared/TwitterAuth.ts"
     ]
 }

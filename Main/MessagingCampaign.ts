@@ -4,15 +4,14 @@ import * as fs from 'fs'
 //there is an issue with typescript not realizing that 'Twitter' here is a class,
 //so there are some @ts-ignore lines in here to suppress the incorrect warnings
 import * as Twitter from 'twitter-lite';
-import * as IPCAPI from '../Shared/IPCAPI';
-import * as ClientApi from '../Shared/ClientApi';
-import * as SVRP from '../Shared/SVRP';
 
-import {TwitterFollower} from './TwitterUser'
-import {TwitterUser} from './TwitterUser'
-import {PermissionLevel} from './TwitterUser'
+import {FollowerCacheQuery, FollowerCacheQueryResult} from '../shared/ServerApi'
+
+import * as ClientApi from '../Shared/ClientApi';
+import * as RPC from '../Shared/RPC';
+
+import {TwitterFollower,TwitterUser,PermissionLevel} from './TwitterUser'
 import {MessageHistory,SendDelayReason} from './TwitterFollowerDB';
-import {FollowerCacheQueryResult} from '../shared/IPCAPI'
 
 import {DelaySeconds} from './Delay'
 import {DelayMilliseconds} from './Delay'
@@ -319,7 +318,7 @@ export class MessagingCampaignManager
             //note that no offset is used because as messages are sent,
             //the query itsef will, upon the next invocation, not include
             //the people who were sent messages before
-            let q:IPCAPI.FollowerCacheQuery = {
+            let q:FollowerCacheQuery = {
                 campaignId:this.campaign.campaign_id,
                 includeContacted:false,
                 sort:this.campaign.sort,

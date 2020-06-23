@@ -1,25 +1,28 @@
-import * as SVRP from './SVRP.js';
+import * as RPC from './RPC.js';
 
 var g_logAll = false;
 
 if (g_logAll)
-    console.log("SVElectronIPC logging all calls");
+    console.log("ElectronIPC logging all calls");
 
-//the SVElectronIPC is used to make calls, and receive responses,
+//ElectronIPC is used to make calls, and receive responses,
 //both from the renderer process to the main process, and the main process to the renderer process
-//
 //they both use this same .ts file.
+//
+//the main process is only able to send to a single 'main' window in the renderer process
+//
+//if multiple windows are opened by the renderer process, this assumption will not be true and
+//further work will be required to sort that situation out
 //
 //the logic here at the top establishes sendFunc and setReceiveFunc
 //sendFunc - what the rest of the code below uses to send calls to the other side
 //setReceiveFunc - the code below says "hey, incoming calls come here..." by providing a function argument to setReceiveFunc
 //
-//
 let sendFunc:(arg:any)=>void = null;
 let setReceiveFunc:(func:(arg:any)=>void)=>void =  null;
 
-//wire into window.IPC (if the renderer process)
-//if that fails, wire ino
+//try to wire this up via window.IPC (if the renderer process)
+//(will throw a exception if the global window object doesnt exist)
 try
 {
     //in the browser, this will attach to the IPC methods
@@ -27,13 +30,15 @@ try
     sendFunc = (window as any).IPC.send;
     setReceiveFunc = (window as any).IPC.receive;
     if (!sendFunc)
-        console.log("SVElectronIPC in browser - sendFunc not found!");
+        console.log("ElectronIPC in browser - sendFunc not found!");
     if (!setReceiveFunc)
-        console.log("SVElectronIPC in browser - setReceiveFunc not found!");
+        console.log("ElectronIPC in browser - setReceiveFunc not found!");
 }
 catch (err)
 {
-    //outside the browser, assume this is the main process
+    //global window object doesnt exist, assume this is the main process
+    //wire into electron.ipcMain.on("IPC") and mainWindow.webContents.send
+
     //the below 'require' statements will actually work in the main process
     //
     //note that the main process only sends messages to the main browser window,
@@ -102,10 +107,10 @@ class PromiseFunctions
     }
 }
 
-export class SVElectronIPC extends SVRP.Transport
+export class ElectronIPC extends RPC.Transport
 {
     //calls are matched by their method name, a string
-    callHandlers:Map<string,SVRP.CallHandler>;
+    callHandlers:Map<string,RPC.CallHandler>;
 
     //responses are matched by the sequence identiier, a number
     responseHandlers:Map<number,PromiseFunctions>;
@@ -114,7 +119,7 @@ export class SVElectronIPC extends SVRP.Transport
     constructor()
     {
         super();
-        this.callHandlers = new Map<string,SVRP.CallHandler>();
+        this.callHandlers = new Map<string,RPC.CallHandler>();
         this.responseHandlers = new Map<number,PromiseFunctions>();
         this.sequence = 0;
 
@@ -124,7 +129,7 @@ export class SVElectronIPC extends SVRP.Transport
             if (json.method!==undefined)
             {
                 //its a call, handle it
-                let resp = await this.HandleIncomingCall(json as SVRP.Call);
+                let resp = await this.HandleIncomingCall(json as RPC.Call);
                         
                 //send a response back only if a sequence was defined on the call
                 if (json.sequence!==undefined)
@@ -143,13 +148,13 @@ export class SVElectronIPC extends SVRP.Transport
             if (json.success!==undefined)
             {
                 //its a response, handle it
-                this.HandleIncomingResponse(json as SVRP.Response);
+                this.HandleIncomingResponse(json as RPC.Response);
             }
         });
     }
 
     //setup a function to handle a particular incoming json call
-    SetHandler<T extends {new (...args: any):SVRP.Call}>(className: T, func:SVRP.CallHandler)
+    SetHandler<T extends {new (...args: any):RPC.Call}>(className: T, func:RPC.CallHandler)
     {
         //have to temporarily instantiate a call to get its method
         //little inefficient but better to do this way for type safety
@@ -157,7 +162,7 @@ export class SVElectronIPC extends SVRP.Transport
         this.callHandlers.set(tempInstance.method,func);
     }
 
-    private async HandleIncomingCall(json:SVRP.Call):Promise<SVRP.Response>
+    private async HandleIncomingCall(json:RPC.Call):Promise<RPC.Response>
     {
         if (g_logAll)
            console.log('IncomingCall: ' + JSON.stringify(json));
@@ -166,7 +171,7 @@ export class SVElectronIPC extends SVRP.Transport
         if (!handler)
         {
             console.log("HandleIncomingCall - no handler for method: " + json.method);
-            return {success:false, error:SVRP.Error.InvalidMethod, sequence:json.sequence};
+            return {success:false, error:RPC.Error.InvalidMethod, sequence:json.sequence};
         }
 
         try
@@ -177,11 +182,11 @@ export class SVElectronIPC extends SVRP.Transport
         {
             console.log("HandleIncomingCall - exception in handler");
             console.error(err);
-            return {success:false, error:SVRP.Error.Unknown, sequence:json.sequence};
+            return {success:false, error:RPC.Error.Unknown, sequence:json.sequence};
         }
     }
 
-    private async HandleIncomingResponse(json:SVRP.Response)
+    private async HandleIncomingResponse(json:RPC.Response)
     {
         if (g_logAll)
            console.log('IncomingResponse: ' + JSON.stringify(json));
@@ -205,7 +210,7 @@ export class SVElectronIPC extends SVRP.Transport
         this.responseHandlers.delete(json.sequence);
     }
 
-    CallNoResponse(c:SVRP.Call,options?:SVRP.CallOptions)
+    CallNoResponse(c:RPC.Call,options?:RPC.CallOptions)
     {
         //we determine the contents of the 'sequence'
         //main difference is that a sequence is not added to the call json,
@@ -227,7 +232,7 @@ export class SVElectronIPC extends SVRP.Transport
     }
 
 
-    Call<T extends SVRP.Call>(c:T,options?:SVRP.CallOptions):Promise<SVRP.Response>
+    Call<T extends RPC.Call>(c:T,options?:RPC.CallOptions):Promise<RPC.Response>
     {
         return new Promise((resolve,reject)=>
         {

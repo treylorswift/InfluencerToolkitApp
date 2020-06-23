@@ -1,11 +1,11 @@
-import { SVDOMComponent, SVDOMComponentConstructor } from "./SVDOMComponent.js"
+import { DOMComponent, DOMComponentConstructor } from "./DOMComponent.js"
 
 class PageMap
 {
-    pageMap:Map<string,SVDOMComponentConstructor>;
-    parent:SVDOMHost;
+    pageMap:Map<string,DOMComponentConstructor>;
+    parent:DOMSite;
 
-    constructor(parent:SVDOMHost)
+    constructor(parent:DOMSite)
     {
         this.parent = parent;
         this.pageMap = null;
@@ -14,7 +14,7 @@ class PageMap
     InitRoutes(json:any)
     {
         //destroy whatever pagemap is already around
-        this.pageMap = new Map<string,SVDOMComponentConstructor>();
+        this.pageMap = new Map<string,DOMComponentConstructor>();
 
         var keys = Object.keys(json);
         for (var i=0; i<keys.length; i++)
@@ -23,7 +23,7 @@ class PageMap
         }
     }
 
-    GetPage(path:string):SVDOMComponent
+    GetPage(path:string):DOMComponent
     {
         if (!this.pageMap)
             return null;
@@ -32,15 +32,15 @@ class PageMap
         if (ctor)
             return new ctor(this.parent);
         else
-            console.log(`SVDOMHost.GetPage - unrecognized path: ${path}`);
+            console.log(`DOMSite.GetPage - unrecognized path: ${path}`);
     }
 };
 
-export abstract class SVDOMHost extends SVDOMComponent
+export abstract class DOMSite extends DOMComponent
 {
     pageMap:PageMap;
     currentPath:string;
-    currentPage:SVDOMComponent;
+    currentPage:DOMComponent;
 
     constructor()
     {
@@ -59,7 +59,7 @@ export abstract class SVDOMHost extends SVDOMComponent
     //component within the element returned by this method
     abstract GetRouteContentElement():HTMLElement;
 
-    GetCurrentRoute():{path:string,page:SVDOMComponent}
+    GetCurrentRoute():{path:string,page:DOMComponent}
     {
         return {page:this.currentPage,path:this.currentPath};
     }

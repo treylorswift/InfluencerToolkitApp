@@ -111,7 +111,7 @@
 
     async function main()
     {
-        requirejs(["Renderer/ITKRenderer"], function(module) {
+        requirejs(["Renderer/Site"], function(module) {
             g_site = new module.Site();
             g_site.onload();
         });

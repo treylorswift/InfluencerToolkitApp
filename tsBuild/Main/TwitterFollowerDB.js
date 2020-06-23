@@ -1,8 +1,24 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const Delay_1 = require("./Delay");
 const DB = require("better-sqlite3");
-const IPCAPI_1 = require("../Shared/IPCAPI");
+const Delay_1 = require("./Delay");
+const ServerApi_1 = require("../Shared/ServerApi");
+//the db architecture is as follows
+//
+//followers table - id_str, screen name, follower count (indexed column), bio/description, etc
+//
+//tags table - tag, id_str
+//
+//tags table contains an entry for every tag found in every user's bio / description
+//
+//what happens if someone changes their bio later?
+//
+//we detect the change, remove all of the old tags associated with that user from the tags table,
+//then add all the new tags from the new bio/description
+//
+//while a follower download is occuring (and after it has completed)
+//we keep a row in the TwitterFollowerTasks table so we know how far along we are
+//so it can be resumed later if it gets aborted in the middle
 class TwitterDB {
     constructor() {
         this.db = null;
@@ -57,13 +73,20 @@ class TwitterDB {
                 );
             `);
             createTags.run();
-            //create an index on the tags so they can be matched quickly
+            //create an index on the tags 'tag' column so they can be matched quickly
             let createTagIndex = this.db.prepare(`
-                CREATE INDEX IF NOT EXISTS TwitterTagIndex ON TwitterTags (
+                CREATE INDEX IF NOT EXISTS TwitterTag_tag_Index ON TwitterTags (
             	    "tag"
                 );
             `);
             createTagIndex.run();
+            //create an index on the tags 'id_str' column so they can be matched quickly
+            let createTagIdIndex = this.db.prepare(`
+                CREATE INDEX IF NOT EXISTS TwitterTag_id_str_Index ON TwitterTags (
+            	    "id_str"
+                );
+            `);
+            createTagIdIndex.run();
             //establishes who follows who
             //id_str is the one who follows id_str_followee
             //
@@ -135,9 +158,10 @@ class TwitterDB {
         }
     }
 }
-exports.TwitterDB = TwitterDB;
 //this class manages the process of actually downloading the followers as well
-//as querying that data later
+//as querying that data later. it calls lots of abstract methods which implement
+//the actually database transactions. currently the only implementation is done
+//with sqlite
 class TwitterFollowerCacheBase {
     constructor() {
         //@ts-ignore
@@ -150,7 +174,7 @@ class TwitterFollowerCacheBase {
     //@ts-ignore
     async Init(twitter, screen_name) {
         console.log('TwitterFollowerCache forcing screen_name to balajis');
-        screen_name = 'balajis';
+        screen_name = 'willrahn';
         try {
             //first get the profile to determine the expected follower count
             let showResult = await twitter.get("users/show", { screen_name: screen_name, include_entities: false, stringify_ids: true });
@@ -171,15 +195,15 @@ class TwitterFollowerCacheBase {
         let p = this.GetProgress();
         //no record of any cache operation.. must have never done one. so none exists
         if (!p)
-            return { status: IPCAPI_1.FollowerCacheStatusEnum.None, completionPercent: 0 };
+            return { status: ServerApi_1.FollowerCacheStatusEnum.None, completionPercent: 0 };
         //if we're actively caching now, say so.. include completion percent
         if (this.buildInProgress)
-            return { status: IPCAPI_1.FollowerCacheStatusEnum.InProgress, completionPercent: p.completionPercent };
+            return { status: ServerApi_1.FollowerCacheStatusEnum.InProgress, completionPercent: p.completionPercent };
         //there's a record but its not finished. Incomplete
         if (!p.finishTime)
-            return { status: IPCAPI_1.FollowerCacheStatusEnum.Incomplete, completionPercent: p.completionPercent };
+            return { status: ServerApi_1.FollowerCacheStatusEnum.Incomplete, completionPercent: p.completionPercent };
         //there is a record, it shows complete. 
-        return { status: IPCAPI_1.FollowerCacheStatusEnum.Complete, completionPercent: p.completionPercent };
+        return { status: ServerApi_1.FollowerCacheStatusEnum.Complete, completionPercent: p.completionPercent };
     }
     //@ts-ignore
     async Build() {

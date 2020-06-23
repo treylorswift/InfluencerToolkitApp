@@ -1,6 +1,6 @@
 //classes and types used for remote procedure calls.. calls that have to cross some kind of boundary
 //whether it be inter process communication, websocket communication, etc
-define("Shared/SVRP", ["require", "exports"], function (require, exports) {
+define("Shared/RPC", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     class Call {
@@ -55,8 +55,8 @@ define("Shared/SVRP", ["require", "exports"], function (require, exports) {
     exports.Response = Response;
     class Transport {
     }
-    Transport.g_transport = null;
     exports.Transport = Transport;
+    Transport.g_transport = null;
     function SetTransport(t) {
         Transport.g_transport = t;
     }
@@ -153,7 +153,7 @@ define("Shared/TwitterAuth", ["require", "exports", "fs"], function (require, ex
     }
     exports.LoadUserLogin = LoadUserLogin;
 });
-define("Shared/IPCAPI", ["require", "exports", "Shared/SVRP"], function (require, exports, SVRP) {
+define("Shared/ServerApi", ["require", "exports", "Shared/RPC"], function (require, exports, RPC) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     ///////////////
@@ -169,14 +169,14 @@ define("Shared/IPCAPI", ["require", "exports", "Shared/SVRP"], function (require
         return new GetAppAuthCall().Call();
     }
     exports.GetAppAuth = GetAppAuth;
-    class GetAppAuthCall extends SVRP.Call {
+    class GetAppAuthCall extends RPC.Call {
         constructor() {
             super(...arguments);
             this.method = "GetAppAuth";
         }
     }
     exports.GetAppAuthCall = GetAppAuthCall;
-    class GetAppAuthResponse extends SVRP.Response {
+    class GetAppAuthResponse extends RPC.Response {
     }
     exports.GetAppAuthResponse = GetAppAuthResponse;
     //////////////////////
@@ -187,14 +187,14 @@ define("Shared/IPCAPI", ["require", "exports", "Shared/SVRP"], function (require
         return new GetUserLoginCall().Call();
     }
     exports.GetUserLogin = GetUserLogin;
-    class GetUserLoginCall extends SVRP.Call {
+    class GetUserLoginCall extends RPC.Call {
         constructor() {
             super(...arguments);
             this.method = "GetUserLogin";
         }
     }
     exports.GetUserLoginCall = GetUserLoginCall;
-    class GetUserLoginResponse extends SVRP.Response {
+    class GetUserLoginResponse extends RPC.Response {
     }
     exports.GetUserLoginResponse = GetUserLoginResponse;
     //to initiate login from the user-facing UI, that request must include the Twitter app API keys.
@@ -205,7 +205,7 @@ define("Shared/IPCAPI", ["require", "exports", "Shared/SVRP"], function (require
         return new LoginCall(args).Call();
     }
     exports.Login = Login;
-    class LoginCall extends SVRP.Call {
+    class LoginCall extends RPC.Call {
         constructor(args) {
             super();
             this.method = "Login";
@@ -213,7 +213,7 @@ define("Shared/IPCAPI", ["require", "exports", "Shared/SVRP"], function (require
         }
     }
     exports.LoginCall = LoginCall;
-    class LoginResponse extends SVRP.Response {
+    class LoginResponse extends RPC.Response {
     }
     exports.LoginResponse = LoginResponse;
     /////////////////////////
@@ -223,7 +223,7 @@ define("Shared/IPCAPI", ["require", "exports", "Shared/SVRP"], function (require
         return new GetFollowerCacheStatusCall().Call();
     }
     exports.GetFollowerCacheStatus = GetFollowerCacheStatus;
-    class GetFollowerCacheStatusCall extends SVRP.Call {
+    class GetFollowerCacheStatusCall extends RPC.Call {
         constructor() {
             super(...arguments);
             this.method = "GetFollowerCacheStatus";
@@ -237,7 +237,7 @@ define("Shared/IPCAPI", ["require", "exports", "Shared/SVRP"], function (require
         FollowerCacheStatusEnum["InProgress"] = "InProgress";
         FollowerCacheStatusEnum["Complete"] = "Complete"; //a cache exists and no operation is being performed right now
     })(FollowerCacheStatusEnum = exports.FollowerCacheStatusEnum || (exports.FollowerCacheStatusEnum = {}));
-    class GetFollowerCacheStatusResponse extends SVRP.Response {
+    class GetFollowerCacheStatusResponse extends RPC.Response {
     }
     exports.GetFollowerCacheStatusResponse = GetFollowerCacheStatusResponse;
     /////////////////////////////////////////
@@ -247,7 +247,7 @@ define("Shared/IPCAPI", ["require", "exports", "Shared/SVRP"], function (require
         return new BuildFollowerCacheCall({ command: command }).Call();
     }
     exports.BuildFollowerCache = BuildFollowerCache;
-    class BuildFollowerCacheCall extends SVRP.Call {
+    class BuildFollowerCacheCall extends RPC.Call {
         constructor(args) {
             super();
             this.method = "BuildFollowerCache";
@@ -264,7 +264,7 @@ define("Shared/IPCAPI", ["require", "exports", "Shared/SVRP"], function (require
         return new QueryFollowerCacheCall({ query: q }).Call();
     }
     exports.QueryFollowerCache = QueryFollowerCache;
-    class QueryFollowerCacheCall extends SVRP.Call {
+    class QueryFollowerCacheCall extends RPC.Call {
         constructor(args) {
             super();
             this.method = "QueryFollowerCache";
@@ -272,14 +272,14 @@ define("Shared/IPCAPI", ["require", "exports", "Shared/SVRP"], function (require
         }
     }
     exports.QueryFollowerCacheCall = QueryFollowerCacheCall;
-    class QueryFollowerCacheResponse extends SVRP.Response {
+    class QueryFollowerCacheResponse extends RPC.Response {
     }
     exports.QueryFollowerCacheResponse = QueryFollowerCacheResponse;
     async function RunMessagingCampaign(c) {
         return new RunMessagingCampaignCall({ campaign: c }).Call();
     }
     exports.RunMessagingCampaign = RunMessagingCampaign;
-    class RunMessagingCampaignCall extends SVRP.Call {
+    class RunMessagingCampaignCall extends RPC.Call {
         constructor(args) {
             super();
             this.method = "RunMessagingCampaign";
@@ -288,55 +288,190 @@ define("Shared/IPCAPI", ["require", "exports", "Shared/SVRP"], function (require
     }
     exports.RunMessagingCampaignCall = RunMessagingCampaignCall;
 });
-define("Shared/ClientApi", ["require", "exports", "Shared/SVRP"], function (require, exports, SVRP) {
+define("Shared/ElectronIPC", ["require", "exports", "Shared/RPC"], function (require, exports, RPC) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    ////////////////////
-    //Client API
-    //(methods the server can call on the client
-    ///////////////////////
-    //////////////////////////
-    //Notify Message Sent
-    /////////////////////////
-    function NotifyMessageSent(args) {
-        new NotifyMessageSentCall(args).CallNoResponse();
+    var g_logAll = false;
+    if (g_logAll)
+        console.log("ElectronIPC logging all calls");
+    //ElectronIPC is used to make calls, and receive responses,
+    //both from the renderer process to the main process, and the main process to the renderer process
+    //they both use this same .ts file.
+    //
+    //the main process is only able to send to a single 'main' window in the renderer process
+    //
+    //if multiple windows are opened by the renderer process, this assumption will not be true and
+    //further work will be required to sort that situation out
+    //
+    //the logic here at the top establishes sendFunc and setReceiveFunc
+    //sendFunc - what the rest of the code below uses to send calls to the other side
+    //setReceiveFunc - the code below says "hey, incoming calls come here..." by providing a function argument to setReceiveFunc
+    //
+    let sendFunc = null;
+    let setReceiveFunc = null;
+    //try to wire this up via window.IPC (if the renderer process)
+    //(will throw a exception if the global window object doesnt exist)
+    try {
+        //in the browser, this will attach to the IPC methods
+        //established in preload.js
+        sendFunc = window.IPC.send;
+        setReceiveFunc = window.IPC.receive;
+        if (!sendFunc)
+            console.log("ElectronIPC in browser - sendFunc not found!");
+        if (!setReceiveFunc)
+            console.log("ElectronIPC in browser - setReceiveFunc not found!");
     }
-    exports.NotifyMessageSent = NotifyMessageSent;
-    class NotifyMessageSentCall extends SVRP.Call {
-        constructor(args) {
+    catch (err) {
+        //global window object doesnt exist, assume this is the main process
+        //wire into electron.ipcMain.on("IPC") and mainWindow.webContents.send
+        //the below 'require' statements will actually work in the main process
+        //
+        //note that the main process only sends messages to the main browser window,
+        //which must be exported from Main.ts and established by the time the below
+        //code runs
+        const main = require("../Main/Main");
+        const electron = require("electron");
+        sendFunc = (arg) => {
+            if (main.g_mainWindow)
+                main.g_mainWindow.webContents.send("IPC", arg);
+            else
+                console.log("sendFunc - g_mainWindow not found!");
+        };
+        setReceiveFunc = (func) => {
+            electron.ipcMain.on("IPC", (event, arg) => func(arg));
+        };
+    }
+    //used for Call() below, and subsequent response handling
+    class PromiseFunctions {
+        constructor(resolve, reject) {
+            this.resolve = resolve;
+            this.reject = reject;
+            this.finished = false;
+        }
+        Finished() {
+            return this.finished;
+        }
+        Resolve(json) {
+            if (this.finished === true) {
+                console.log("PromiseFunctions.Resolve - already finished, can't resolve");
+                console.trace();
+                return;
+            }
+            this.resolve(json);
+            this.finished = true;
+        }
+        Reject(json) {
+            if (this.finished === true) {
+                console.log("PromiseFunctions.Reject - already finished, can't reject");
+                console.trace();
+                return;
+            }
+            this.reject(json);
+            this.finished = true;
+        }
+    }
+    class ElectronIPC extends RPC.Transport {
+        constructor() {
             super();
-            this.method = "NotifyMessageSent";
-            this.args = args;
+            this.callHandlers = new Map();
+            this.responseHandlers = new Map();
+            this.sequence = 0;
+            //calls coming into the process come in here
+            setReceiveFunc(async (json) => {
+                if (json.method !== undefined) {
+                    //its a call, handle it
+                    let resp = await this.HandleIncomingCall(json);
+                    //send a response back only if a sequence was defined on the call
+                    if (json.sequence !== undefined) {
+                        if (g_logAll)
+                            console.log('IncomingCallResponse: ' + JSON.stringify(resp));
+                        //fill in the correct sequence if they forgot to
+                        if (resp.sequence === undefined)
+                            resp.sequence = json.sequence;
+                        sendFunc(resp);
+                    }
+                }
+                else if (json.success !== undefined) {
+                    //its a response, handle it
+                    this.HandleIncomingResponse(json);
+                }
+            });
+        }
+        //setup a function to handle a particular incoming json call
+        SetHandler(className, func) {
+            //have to temporarily instantiate a call to get its method
+            //little inefficient but better to do this way for type safety
+            let tempInstance = new className();
+            this.callHandlers.set(tempInstance.method, func);
+        }
+        async HandleIncomingCall(json) {
+            if (g_logAll)
+                console.log('IncomingCall: ' + JSON.stringify(json));
+            var handler = this.callHandlers.get(json.method);
+            if (!handler) {
+                console.log("HandleIncomingCall - no handler for method: " + json.method);
+                return { success: false, error: RPC.Error.InvalidMethod, sequence: json.sequence };
+            }
+            try {
+                return handler(json);
+            }
+            catch (err) {
+                console.log("HandleIncomingCall - exception in handler");
+                console.error(err);
+                return { success: false, error: RPC.Error.Unknown, sequence: json.sequence };
+            }
+        }
+        async HandleIncomingResponse(json) {
+            if (g_logAll)
+                console.log('IncomingResponse: ' + JSON.stringify(json));
+            var handler = this.responseHandlers.get(json.sequence);
+            if (!handler) {
+                console.log("HandleIncomingResponse - no handler for sequence: " + json.sequence + " - data discarded: " + JSON.stringify(json));
+                return;
+            }
+            if (handler.Finished() !== true) {
+                handler.Resolve(json);
+            }
+            else {
+                console.log("HandleIncomingResponse - handler was already finished, data discarded: " + JSON.stringify(json));
+            }
+            this.responseHandlers.delete(json.sequence);
+        }
+        CallNoResponse(c, options) {
+            //we determine the contents of the 'sequence'
+            //main difference is that a sequence is not added to the call json,
+            //so the other side will know not to send back a response
+            //we will also not create a response handler in anticipation of it..
+            delete c.sequence;
+            var log = g_logAll;
+            if (options && options.log !== undefined)
+                log = options.log === true;
+            if (log)
+                console.log('CallNoResponse: ' + JSON.stringify(c));
+            //store these promise functions in our map so that this Call can be resolved later
+            //when a matching sequence comes back from the other side
+            sendFunc(c);
+        }
+        Call(c, options) {
+            return new Promise((resolve, reject) => {
+                //we determine the contents of the 'sequence'
+                c.sequence = this.sequence;
+                var log = g_logAll;
+                if (options && options.log !== undefined)
+                    log = options.log === true;
+                if (log)
+                    console.log('Call: ' + JSON.stringify(c));
+                //store these promise functions in our map so that this Call can be resolved later
+                //when a matching sequence comes back from the other side
+                this.responseHandlers.set(this.sequence, new PromiseFunctions(resolve, reject));
+                sendFunc(c);
+                this.sequence++;
+            });
         }
     }
-    exports.NotifyMessageSentCall = NotifyMessageSentCall;
-    /////////////////
-    //Notify Message Campaign Started / Stopped
-    ///////////////////
-    function NotifyMessageCampaignStarted() {
-        new NotifyMessageCampaignStartedCall().CallNoResponse();
-    }
-    exports.NotifyMessageCampaignStarted = NotifyMessageCampaignStarted;
-    class NotifyMessageCampaignStartedCall extends SVRP.Call {
-        constructor() {
-            super(...arguments);
-            this.method = "NotifyMessageCampaignStarted";
-        }
-    }
-    exports.NotifyMessageCampaignStartedCall = NotifyMessageCampaignStartedCall;
-    function NotifyMessageCampaignStopped() {
-        new NotifyMessageCampaignStoppedCall().CallNoResponse();
-    }
-    exports.NotifyMessageCampaignStopped = NotifyMessageCampaignStopped;
-    class NotifyMessageCampaignStoppedCall extends SVRP.Call {
-        constructor() {
-            super(...arguments);
-            this.method = "NotifyMessageCampaignStopped";
-        }
-    }
-    exports.NotifyMessageCampaignStoppedCall = NotifyMessageCampaignStoppedCall;
+    exports.ElectronIPC = ElectronIPC;
 });
-define("Renderer/SVDOMHost", ["require", "exports", "Renderer/SVDOMComponent"], function (require, exports, SVDOMComponent_js_1) {
+define("Renderer/DOMSite", ["require", "exports", "Renderer/DOMComponent"], function (require, exports, DOMComponent_js_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     class PageMap {
@@ -359,11 +494,11 @@ define("Renderer/SVDOMHost", ["require", "exports", "Renderer/SVDOMComponent"], 
             if (ctor)
                 return new ctor(this.parent);
             else
-                console.log(`SVDOMHost.GetPage - unrecognized path: ${path}`);
+                console.log(`DOMSite.GetPage - unrecognized path: ${path}`);
         }
     }
     ;
-    class SVDOMHost extends SVDOMComponent_js_1.SVDOMComponent {
+    class DOMSite extends DOMComponent_js_1.DOMComponent {
         constructor() {
             super(null);
             this.pageMap = new PageMap(this);
@@ -406,20 +541,20 @@ define("Renderer/SVDOMHost", ["require", "exports", "Renderer/SVDOMComponent"], 
             return false;
         }
     }
-    exports.SVDOMHost = SVDOMHost;
+    exports.DOMSite = DOMSite;
 });
-define("Renderer/SVDOMComponent", ["require", "exports"], function (require, exports) {
+define("Renderer/DOMComponent", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    class SVDOMPopupHandle {
+    class DOMPopupHandle {
         constructor() {
-            this.handle = 'popup_' + SVDOMPopupHandle.count;
-            SVDOMPopupHandle.count++;
+            this.handle = 'popup_' + DOMPopupHandle.count;
+            DOMPopupHandle.count++;
         }
     }
-    SVDOMPopupHandle.count = 0;
-    exports.SVDOMPopupHandle = SVDOMPopupHandle;
-    class SVDOMComponent {
+    exports.DOMPopupHandle = DOMPopupHandle;
+    DOMPopupHandle.count = 0;
+    class DOMComponent {
         constructor(parent) {
             this.parent = parent;
             if (parent)
@@ -443,7 +578,7 @@ define("Renderer/SVDOMComponent", ["require", "exports"], function (require, exp
             }
         }
         DisplayPopupComponent(x, y, component) {
-            var h = new SVDOMPopupHandle();
+            var h = new DOMPopupHandle();
             var parent_handle = h.handle;
             var content_handle = h.handle + '_content';
             var html = `
@@ -516,8 +651,8 @@ define("Renderer/SVDOMComponent", ["require", "exports"], function (require, exp
                 modal.style.display = "none";
         }
     }
-    exports.SVDOMComponent = SVDOMComponent;
-    class StringMessageComponent extends SVDOMComponent {
+    exports.DOMComponent = DOMComponent;
+    class StringMessageComponent extends DOMComponent {
         constructor(parent, message) {
             super(parent);
             this.message = message;
@@ -527,191 +662,60 @@ define("Renderer/SVDOMComponent", ["require", "exports"], function (require, exp
         }
     }
 });
-define("Shared/SVElectronIPC", ["require", "exports", "Shared/SVRP"], function (require, exports, SVRP) {
+define("Shared/ClientApi", ["require", "exports", "Shared/RPC"], function (require, exports, RPC) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    var g_logAll = false;
-    if (g_logAll)
-        console.log("SVElectronIPC logging all calls");
-    //the SVElectronIPC is used to make calls, and receive responses,
-    //both from the renderer process to the main process, and the main process to the renderer process
-    //
-    //they both use this same .ts file.
-    //
-    //the logic here at the top establishes sendFunc and setReceiveFunc
-    //sendFunc - what the rest of the code below uses to send calls to the other side
-    //setReceiveFunc - the code below says "hey, incoming calls come here..." by providing a function argument to setReceiveFunc
-    //
-    //
-    let sendFunc = null;
-    let setReceiveFunc = null;
-    //wire into window.IPC (if the renderer process)
-    //if that fails, wire ino
-    try {
-        //in the browser, this will attach to the IPC methods
-        //established in preload.js
-        sendFunc = window.IPC.send;
-        setReceiveFunc = window.IPC.receive;
-        if (!sendFunc)
-            console.log("SVElectronIPC in browser - sendFunc not found!");
-        if (!setReceiveFunc)
-            console.log("SVElectronIPC in browser - setReceiveFunc not found!");
+    ////////////////////
+    //Client API
+    //(methods the server can call on the client
+    ///////////////////////
+    //////////////////////////
+    //Notify Message Sent
+    /////////////////////////
+    function NotifyMessageSent(args) {
+        new NotifyMessageSentCall(args).CallNoResponse();
     }
-    catch (err) {
-        //outside the browser, assume this is the main process
-        //the below 'require' statements will actually work in the main process
-        //
-        //note that the main process only sends messages to the main browser window,
-        //which must be exported from Main.ts and established by the time the below
-        //code runs
-        const main = require("../Main/Main");
-        const electron = require("electron");
-        sendFunc = (arg) => {
-            if (main.g_mainWindow)
-                main.g_mainWindow.webContents.send("IPC", arg);
-            else
-                console.log("sendFunc - g_mainWindow not found!");
-        };
-        setReceiveFunc = (func) => {
-            electron.ipcMain.on("IPC", (event, arg) => func(arg));
-        };
-    }
-    //used for Call() below, and subsequent response handling
-    class PromiseFunctions {
-        constructor(resolve, reject) {
-            this.resolve = resolve;
-            this.reject = reject;
-            this.finished = false;
-        }
-        Finished() {
-            return this.finished;
-        }
-        Resolve(json) {
-            if (this.finished === true) {
-                console.log("PromiseFunctions.Resolve - already finished, can't resolve");
-                console.trace();
-                return;
-            }
-            this.resolve(json);
-            this.finished = true;
-        }
-        Reject(json) {
-            if (this.finished === true) {
-                console.log("PromiseFunctions.Reject - already finished, can't reject");
-                console.trace();
-                return;
-            }
-            this.reject(json);
-            this.finished = true;
-        }
-    }
-    class SVElectronIPC extends SVRP.Transport {
-        constructor() {
+    exports.NotifyMessageSent = NotifyMessageSent;
+    class NotifyMessageSentCall extends RPC.Call {
+        constructor(args) {
             super();
-            this.callHandlers = new Map();
-            this.responseHandlers = new Map();
-            this.sequence = 0;
-            //calls coming into the process come in here
-            setReceiveFunc(async (json) => {
-                if (json.method !== undefined) {
-                    //its a call, handle it
-                    let resp = await this.HandleIncomingCall(json);
-                    //send a response back only if a sequence was defined on the call
-                    if (json.sequence !== undefined) {
-                        if (g_logAll)
-                            console.log('IncomingCallResponse: ' + JSON.stringify(resp));
-                        //fill in the correct sequence if they forgot to
-                        if (resp.sequence === undefined)
-                            resp.sequence = json.sequence;
-                        sendFunc(resp);
-                    }
-                }
-                else if (json.success !== undefined) {
-                    //its a response, handle it
-                    this.HandleIncomingResponse(json);
-                }
-            });
-        }
-        //setup a function to handle a particular incoming json call
-        SetHandler(className, func) {
-            //have to temporarily instantiate a call to get its method
-            //little inefficient but better to do this way for type safety
-            let tempInstance = new className();
-            this.callHandlers.set(tempInstance.method, func);
-        }
-        async HandleIncomingCall(json) {
-            if (g_logAll)
-                console.log('IncomingCall: ' + JSON.stringify(json));
-            var handler = this.callHandlers.get(json.method);
-            if (!handler) {
-                console.log("HandleIncomingCall - no handler for method: " + json.method);
-                return { success: false, error: SVRP.Error.InvalidMethod, sequence: json.sequence };
-            }
-            try {
-                return handler(json);
-            }
-            catch (err) {
-                console.log("HandleIncomingCall - exception in handler");
-                console.error(err);
-                return { success: false, error: SVRP.Error.Unknown, sequence: json.sequence };
-            }
-        }
-        async HandleIncomingResponse(json) {
-            if (g_logAll)
-                console.log('IncomingResponse: ' + JSON.stringify(json));
-            var handler = this.responseHandlers.get(json.sequence);
-            if (!handler) {
-                console.log("HandleIncomingResponse - no handler for sequence: " + json.sequence + " - data discarded: " + JSON.stringify(json));
-                return;
-            }
-            if (handler.Finished() !== true) {
-                handler.Resolve(json);
-            }
-            else {
-                console.log("HandleIncomingResponse - handler was already finished, data discarded: " + JSON.stringify(json));
-            }
-            this.responseHandlers.delete(json.sequence);
-        }
-        CallNoResponse(c, options) {
-            //we determine the contents of the 'sequence'
-            //main difference is that a sequence is not added to the call json,
-            //so the other side will know not to send back a response
-            //we will also not create a response handler in anticipation of it..
-            delete c.sequence;
-            var log = g_logAll;
-            if (options && options.log !== undefined)
-                log = options.log === true;
-            if (log)
-                console.log('CallNoResponse: ' + JSON.stringify(c));
-            //store these promise functions in our map so that this Call can be resolved later
-            //when a matching sequence comes back from the other side
-            sendFunc(c);
-        }
-        Call(c, options) {
-            return new Promise((resolve, reject) => {
-                //we determine the contents of the 'sequence'
-                c.sequence = this.sequence;
-                var log = g_logAll;
-                if (options && options.log !== undefined)
-                    log = options.log === true;
-                if (log)
-                    console.log('Call: ' + JSON.stringify(c));
-                //store these promise functions in our map so that this Call can be resolved later
-                //when a matching sequence comes back from the other side
-                this.responseHandlers.set(this.sequence, new PromiseFunctions(resolve, reject));
-                sendFunc(c);
-                this.sequence++;
-            });
+            this.method = "NotifyMessageSent";
+            this.args = args;
         }
     }
-    exports.SVElectronIPC = SVElectronIPC;
+    exports.NotifyMessageSentCall = NotifyMessageSentCall;
+    /////////////////
+    //Notify Message Campaign Started / Stopped
+    ///////////////////
+    function NotifyMessageCampaignStarted() {
+        new NotifyMessageCampaignStartedCall().CallNoResponse();
+    }
+    exports.NotifyMessageCampaignStarted = NotifyMessageCampaignStarted;
+    class NotifyMessageCampaignStartedCall extends RPC.Call {
+        constructor() {
+            super(...arguments);
+            this.method = "NotifyMessageCampaignStarted";
+        }
+    }
+    exports.NotifyMessageCampaignStartedCall = NotifyMessageCampaignStartedCall;
+    function NotifyMessageCampaignStopped() {
+        new NotifyMessageCampaignStoppedCall().CallNoResponse();
+    }
+    exports.NotifyMessageCampaignStopped = NotifyMessageCampaignStopped;
+    class NotifyMessageCampaignStoppedCall extends RPC.Call {
+        constructor() {
+            super(...arguments);
+            this.method = "NotifyMessageCampaignStopped";
+        }
+    }
+    exports.NotifyMessageCampaignStoppedCall = NotifyMessageCampaignStoppedCall;
 });
-define("Renderer/HomePage", ["require", "exports", "Shared/IPCAPI", "Shared/ClientApi", "Shared/SVRP", "Renderer/SVDOMComponent"], function (require, exports, IPCAPI, ClientApi, SVRP, SVDOMComponent_js_2) {
+define("Renderer/HomePage", ["require", "exports", "Shared/RPC", "Shared/ServerApi", "Shared/ClientApi", "Renderer/DOMComponent"], function (require, exports, RPC, ServerApi, ClientApi, DOMComponent_js_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     //only support a single / default messaging campaign from this UI currently
     let g_campaignId = 'default';
-    class ProgressComponent extends SVDOMComponent_js_2.SVDOMComponent {
+    class ProgressComponent extends DOMComponent_js_2.DOMComponent {
         //expect a number 0 to 100
         SetProgressPercent(p) {
             this.progressDiv.style.width = `${p}%`;
@@ -721,12 +725,12 @@ define("Renderer/HomePage", ["require", "exports", "Shared/IPCAPI", "Shared/Clie
             this.progressDiv = em.querySelector('#progressInner');
         }
     }
-    class CacheStatusComponent extends SVDOMComponent_js_2.SVDOMComponent {
+    class CacheStatusComponent extends DOMComponent_js_2.DOMComponent {
         async BuildCache(cmd) {
             let statusResult;
             let errorMessage = 'Sorry, something went wrong. Unable to retreive your followers right now.';
             try {
-                statusResult = await IPCAPI.GetFollowerCacheStatus();
+                statusResult = await ServerApi.GetFollowerCacheStatus();
                 if (statusResult.success !== true) {
                     alert(errorMessage);
                     return;
@@ -738,17 +742,17 @@ define("Renderer/HomePage", ["require", "exports", "Shared/IPCAPI", "Shared/Clie
                 console.error(err);
                 return;
             }
-            if (statusResult.status === IPCAPI.FollowerCacheStatusEnum.InProgress) {
+            if (statusResult.status === ServerApi.FollowerCacheStatusEnum.InProgress) {
                 alert("Follower download is in progress.");
                 return;
             }
-            if (cmd === IPCAPI.BuildFollowerCacheCommands.Rebuild) {
-                if (statusResult.status === IPCAPI.FollowerCacheStatusEnum.Complete) {
+            if (cmd === ServerApi.BuildFollowerCacheCommands.Rebuild) {
+                if (statusResult.status === ServerApi.FollowerCacheStatusEnum.Complete) {
                     if (!confirm("Are you sure you want to rebuild? It takes about 15 minutes for 75k followers."))
                         return;
                 }
             }
-            let buildCacheResult = await IPCAPI.BuildFollowerCache(cmd);
+            let buildCacheResult = await ServerApi.BuildFollowerCache(cmd);
             if (!buildCacheResult.success) {
                 console.log("BuildCache error: " + buildCacheResult.error);
                 alert(errorMessage);
@@ -758,10 +762,10 @@ define("Renderer/HomePage", ["require", "exports", "Shared/IPCAPI", "Shared/Clie
             //ok build has started.. need to poll for updates
             let poll = setInterval(async () => {
                 try {
-                    let statusResult = await IPCAPI.GetFollowerCacheStatus();
+                    let statusResult = await ServerApi.GetFollowerCacheStatus();
                     if (statusResult.success) {
                         this.progressComponent.SetProgressPercent(statusResult.completionPercent);
-                        if (statusResult.status !== IPCAPI.FollowerCacheStatusEnum.InProgress) {
+                        if (statusResult.status !== ServerApi.FollowerCacheStatusEnum.InProgress) {
                             //stop the interval
                             clearInterval(poll);
                             //refresh the status displayed
@@ -781,25 +785,25 @@ define("Renderer/HomePage", ["require", "exports", "Shared/IPCAPI", "Shared/Clie
             this.UpdateStatus();
         }
         async UpdateStatus() {
-            let cacheStatusResponse = await IPCAPI.GetFollowerCacheStatus();
+            let cacheStatusResponse = await ServerApi.GetFollowerCacheStatus();
             let progressHtml = `<div id="progress" style="display:inline-block; margin-left: 4px; height:15px; width:100px; border:1px solid #d8d8d8"></div>`;
             let html = '';
             let progressShown = false;
             let rebuildShown = false;
             let resumeShown = false;
-            if (cacheStatusResponse.status === IPCAPI.FollowerCacheStatusEnum.None) {
+            if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.None) {
                 html += `Let's get started and retreive your followers from Twitter. <button id="rebuildCache">Retreive Follower List</button>`;
                 rebuildShown = true;
             }
-            else if (cacheStatusResponse.status === IPCAPI.FollowerCacheStatusEnum.Incomplete) {
+            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.Incomplete) {
                 html += `Your last follower download didn't finish. <button id="resumeCache">Resume Downloading Followers</button>`;
                 resumeShown = true;
             }
-            else if (cacheStatusResponse.status === IPCAPI.FollowerCacheStatusEnum.Complete) {
+            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.Complete) {
                 html += `Followers download complete. <button id="rebuildCache">Refresh Downloaded Followers</button>`;
                 rebuildShown = true;
             }
-            else if (cacheStatusResponse.status === IPCAPI.FollowerCacheStatusEnum.InProgress) {
+            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.InProgress) {
                 html +=
                     `<div style="display:flex; align-items:center">
                 Follower Download Progress: ${progressHtml}
@@ -813,12 +817,12 @@ define("Renderer/HomePage", ["require", "exports", "Shared/IPCAPI", "Shared/Clie
                 this.progressComponent.SetProgressPercent(cacheStatusResponse.completionPercent);
             }
             if (rebuildShown)
-                this.MapEvent(this.destElement, 'rebuildCache', 'click', () => this.BuildCache(IPCAPI.BuildFollowerCacheCommands.Rebuild));
+                this.MapEvent(this.destElement, 'rebuildCache', 'click', () => this.BuildCache(ServerApi.BuildFollowerCacheCommands.Rebuild));
             if (resumeShown)
-                this.MapEvent(this.destElement, 'resumeCache', 'click', () => this.BuildCache(IPCAPI.BuildFollowerCacheCommands.Resume));
+                this.MapEvent(this.destElement, 'resumeCache', 'click', () => this.BuildCache(ServerApi.BuildFollowerCacheCommands.Resume));
         }
     }
-    class QueryComponent extends SVDOMComponent_js_2.SVDOMComponent {
+    class QueryComponent extends DOMComponent_js_2.DOMComponent {
         constructor(parent) {
             super(parent);
             this.resultsDiv = null;
@@ -860,7 +864,7 @@ define("Renderer/HomePage", ["require", "exports", "Shared/IPCAPI", "Shared/Clie
                 //this query finishes.
                 while (1) {
                     try {
-                        let results = await IPCAPI.QueryFollowerCache(query);
+                        let results = await ServerApi.QueryFollowerCache(query);
                         //display the results
                         this.RenderResults(results);
                         if (this.deferredQuery) {
@@ -903,7 +907,7 @@ define("Renderer/HomePage", ["require", "exports", "Shared/IPCAPI", "Shared/Clie
                     }
                 };
                 this.campaignRunning = true;
-                let startOK = await IPCAPI.RunMessagingCampaign(campaign);
+                let startOK = await ServerApi.RunMessagingCampaign(campaign);
                 if (startOK.success !== true) {
                     alert('Unable to start sending messages: ' + startOK.errorMessage);
                     this.campaignRunning = false;
@@ -1024,15 +1028,15 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
             /////////////////
             //sign up to handle message campaign stuff
             ////////////////
-            SVRP.SetHandler(ClientApi.NotifyMessageCampaignStartedCall, async (c) => {
+            RPC.SetHandler(ClientApi.NotifyMessageCampaignStartedCall, async (c) => {
                 this.campaignRunning = true;
                 return { success: true };
             });
-            SVRP.SetHandler(ClientApi.NotifyMessageCampaignStoppedCall, async (c) => {
+            RPC.SetHandler(ClientApi.NotifyMessageCampaignStoppedCall, async (c) => {
                 this.campaignRunning = false;
                 return { success: true };
             });
-            SVRP.SetHandler(ClientApi.NotifyMessageSentCall, async (c) => {
+            RPC.SetHandler(ClientApi.NotifyMessageSentCall, async (c) => {
                 //updated the Contacted column for this user to 'Yes'
                 let updateContactedElement = em.querySelector(`#contacted-${c.args.recipientScreenName}`);
                 if (updateContactedElement)
@@ -1054,12 +1058,12 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
         }
         async RenderCleanup() {
             //dont need these notifications anymore
-            SVRP.SetHandler(ClientApi.NotifyMessageCampaignStartedCall, null);
-            SVRP.SetHandler(ClientApi.NotifyMessageCampaignStoppedCall, null);
-            SVRP.SetHandler(ClientApi.NotifyMessageSentCall, null);
+            RPC.SetHandler(ClientApi.NotifyMessageCampaignStartedCall, null);
+            RPC.SetHandler(ClientApi.NotifyMessageCampaignStoppedCall, null);
+            RPC.SetHandler(ClientApi.NotifyMessageSentCall, null);
         }
     }
-    class HomePage extends SVDOMComponent_js_2.SVDOMComponent {
+    class HomePage extends DOMComponent_js_2.DOMComponent {
         constructor() {
             super(...arguments);
             this.cacheStatusComponent = new CacheStatusComponent(this);
@@ -1073,7 +1077,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
         }
         async Render(em) {
             //make sure we have a valid / current login of a current user
-            let userLoginResponse = await IPCAPI.GetUserLogin();
+            let userLoginResponse = await ServerApi.GetUserLogin();
             //if they're not logged in, redirect to the login page
             if (!userLoginResponse.userLogin) {
                 this.GetSite().RouteTo("/login");
@@ -1121,10 +1125,10 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
     }
     exports.HomePage = HomePage;
 });
-define("Renderer/ITKRenderer", ["require", "exports", "Shared/IPCAPI", "Shared/SVRP", "Renderer/SVDOMComponent", "Renderer/SVDOMHost", "Shared/SVElectronIPC", "Renderer/HomePage"], function (require, exports, IPCAPI, SVRP, SVDOMComponent_js_3, SVDOMHost_js_1, SVElectronIPC_js_1, HomePage_js_1) {
+define("Renderer/LoginPage", ["require", "exports", "Shared/ServerApi", "Renderer/DOMComponent"], function (require, exports, ServerApi, DOMComponent_js_3) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    class LoginPage extends SVDOMComponent_js_3.SVDOMComponent {
+    class LoginPage extends DOMComponent_js_3.DOMComponent {
         constructor() {
             super(...arguments);
             this.ckey = null;
@@ -1138,7 +1142,7 @@ define("Renderer/ITKRenderer", ["require", "exports", "Shared/IPCAPI", "Shared/S
                     },
                     saveUserAuth: this.rememberMe.checked
                 };
-                let result = await IPCAPI.Login(args);
+                let result = await ServerApi.Login(args);
                 if (!result.userLogin) {
                     console.error(JSON.stringify(result));
                     if (result.errorMessage)
@@ -1176,7 +1180,7 @@ define("Renderer/ITKRenderer", ["require", "exports", "Shared/IPCAPI", "Shared/S
             //grab the current Twitter app API keys (if they have been saved to disk.. would be there if any
             //previous login worked, or partially worked with good app keys but perhaps a bad user password)
             try {
-                let getAppAuthResult = await IPCAPI.GetAppAuth();
+                let getAppAuthResult = await ServerApi.GetAppAuth();
                 if (getAppAuthResult.appAuth) {
                     this.ckey.value = getAppAuthResult.appAuth.consumer_key;
                     this.csec.value = getAppAuthResult.appAuth.consumer_secret;
@@ -1187,7 +1191,12 @@ define("Renderer/ITKRenderer", ["require", "exports", "Shared/IPCAPI", "Shared/S
             }
         }
     }
-    class Site extends SVDOMHost_js_1.SVDOMHost {
+    exports.LoginPage = LoginPage;
+});
+define("Renderer/Site", ["require", "exports", "Shared/RPC", "Shared/ServerApi", "Shared/ElectronIPC", "Renderer/DOMSite", "Renderer/HomePage", "Renderer/LoginPage"], function (require, exports, RPC, ServerApi, ElectronIPC_js_1, DOMSite_js_1, HomePage_js_1, LoginPage_js_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    class Site extends DOMSite_js_1.DOMSite {
         constructor() {
             super();
             if (Site.g_site) {
@@ -1198,7 +1207,7 @@ define("Renderer/ITKRenderer", ["require", "exports", "Shared/IPCAPI", "Shared/S
             this.routerContentElement = null;
             var map = {
                 "/": HomePage_js_1.HomePage,
-                "/login": LoginPage,
+                "/login": LoginPage_js_1.LoginPage,
             };
             this.InitRoutes(map);
             window.addEventListener('popstate', (event) => {
@@ -1222,7 +1231,7 @@ define("Renderer/ITKRenderer", ["require", "exports", "Shared/IPCAPI", "Shared/S
                 <div id="routerContentId"></div>`;
                 this.routerContentElement = em.querySelector('#routerContentId');
                 //first make sure our session cookie is valid and we're logged in
-                let userLoginResponse = await IPCAPI.GetUserLogin();
+                let userLoginResponse = await ServerApi.GetUserLogin();
                 //if they're not logged in, we either tell them that they're not authorized, or show them
                 //the login page where they can try to login
                 if (!userLoginResponse.userLogin) {
@@ -1238,11 +1247,401 @@ define("Renderer/ITKRenderer", ["require", "exports", "Shared/IPCAPI", "Shared/S
             }
         }
         async onload() {
-            SVRP.SetTransport(new SVElectronIPC_js_1.SVElectronIPC());
+            RPC.SetTransport(new ElectronIPC_js_1.ElectronIPC());
             this.Render(document.getElementById("site"));
         }
     }
-    Site.g_site = null;
     exports.Site = Site;
+    Site.g_site = null;
+});
+define("Renderer/ProgressComponent", ["require", "exports", "Renderer/DOMComponent"], function (require, exports, DOMComponent_js_4) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    //simple progress bar
+    class ProgressComponent extends DOMComponent_js_4.DOMComponent {
+        //expect a number 0 to 100
+        SetProgressPercent(p) {
+            this.progressDiv.style.width = `${p}%`;
+        }
+        async Render(em) {
+            em.innerHTML = `<div id="progressInner" style="display:inline-block; width:0%; height:100%; background-color:rgb(88, 178, 255)"></div>`;
+            this.progressDiv = em.querySelector('#progressInner');
+        }
+    }
+    exports.ProgressComponent = ProgressComponent;
+});
+define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/ServerApi", "Shared/ClientApi", "Renderer/DOMComponent"], function (require, exports, RPC, ServerApi, ClientApi, DOMComponent_js_5) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    //only support a single / default messaging campaign from this UI currently
+    let g_campaignId = 'default';
+    class QueryComponent extends DOMComponent_js_5.DOMComponent {
+        constructor(parent) {
+            super(parent);
+            this.resultsDiv = null;
+            this.sortElement = null;
+            this.tagsElement = null;
+            this.messageElement = null;
+            this.sendButton = null;
+            this.sendLimit = null;
+            //if they update the query ui before a previous query has finished, we wait
+            //for the previous query to finish.
+            //we keep a queue of 1 query (representing the most recent query attempt) to run
+            //after the completion of the previous query.
+            this.queryRunning = false;
+            this.deferredQuery = null;
+            this.parent = null;
+            //by default we will show all followers including ones weve contacted
+            this.contactedVisible = true;
+            this.toggleContactedButton = null;
+            this.campaignRunning = false;
+            this.RunQuery = async () => {
+                var sort = this.sortElement.value;
+                let tags = this.tagsElement.value.split(' ');
+                let query = {
+                    campaignId: g_campaignId,
+                    tags: tags,
+                    sort: sort,
+                    offset: 0,
+                    limit: 50,
+                    includeContacted: this.contactedVisible,
+                    useDryRunMessageHistory: true
+                };
+                if (this.queryRunning) {
+                    this.deferredQuery = query;
+                    return;
+                }
+                this.queryRunning = true;
+                //this loop exists to make sure that any queries queued
+                //while processing this query get immediately executed when
+                //this query finishes.
+                while (1) {
+                    try {
+                        let results = await ServerApi.QueryFollowerCache(query);
+                        //display the results
+                        this.RenderResults(results);
+                        if (this.deferredQuery) {
+                            //there was a query queued up while the previous query was processing.
+                            //we should loop and run that query now
+                            query = this.deferredQuery;
+                            this.deferredQuery = null;
+                        }
+                        else {
+                            //there is no deferred query to do, we can 
+                            //break out of this loop
+                            break;
+                        }
+                    }
+                    catch (err) {
+                        console.log("Error while processing query: " + JSON.stringify(query));
+                        console.error(err);
+                        break;
+                    }
+                }
+                this.queryRunning = false;
+            };
+            this.RunCampaign = async () => {
+                if (this.campaignRunning) {
+                    alert("Messaging campaign already running, please wait for it to finish");
+                    return;
+                }
+                var sort = this.sortElement.value;
+                let tags = this.tagsElement.value.split(' ');
+                let count = this.GetSendCount();
+                let campaign = {
+                    message: this.messageElement.value,
+                    campaign_id: g_campaignId,
+                    sort: sort,
+                    scheduling: "burst",
+                    dryRun: true,
+                    count: count,
+                    filter: {
+                        tags: tags
+                    }
+                };
+                this.campaignRunning = true;
+                let startOK = await ServerApi.RunMessagingCampaign(campaign);
+                if (startOK.success !== true) {
+                    alert('Unable to start sending messages: ' + startOK.errorMessage);
+                    this.campaignRunning = false;
+                    return;
+                }
+            };
+            this.ToggleContacted = () => {
+                if (this.contactedVisible) {
+                    this.contactedVisible = false;
+                    this.toggleContactedButton.innerHTML = "Show Contacted";
+                }
+                else {
+                    this.contactedVisible = true;
+                    this.toggleContactedButton.innerHTML = "Hide Contacted";
+                }
+                this.RunQuery();
+            };
+            this.SendLimitChanged = () => {
+                let count = this.GetSendCount();
+                if (count !== null)
+                    this.sendButton.innerHTML = `Send To ${count} Followers`;
+                else
+                    this.sendButton.innerHTML = `Send To All Followers`;
+            };
+            this.parent = parent;
+        }
+        RenderResults(results) {
+            let html = '';
+            for (var i = 0; i < results.followers.length; i++) {
+                let f = results.followers[i];
+                let imgUrl = f.profileImageUrl;
+                if (!imgUrl)
+                    imgUrl = "https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png";
+                let contactedString = 'No';
+                if (results.followers[i].contactDate)
+                    contactedString = 'Yes';
+                html +=
+                    `<div id="row-${f.screenName}" class="followerRowDeleter">
+                <div class="followerRow" onclick="window.open('https://twitter.com/${f.screenName}', '_blank')">
+                    <div class="followerIcon"><img class="followerIconImg" src="${imgUrl}"></div>
+                    <div class="followerName">${f.name}</div>
+                    <div class="followerScreenName">${f.screenName}</div>
+                    <div class="followerFollowersCount">${f.followersCount}</div>
+                    <div id="contacted-${f.screenName}" class="followerContacted">${contactedString}</div>
+                </div>
+                </div>`;
+            }
+            this.resultsDiv.innerHTML = html;
+        }
+        //returns null if the send count field is empty/blank
+        GetSendCount() {
+            if (this.sendLimit.value === '')
+                return null;
+            let count = 0;
+            try {
+                let count = parseInt(this.sendLimit.value);
+                return count;
+            }
+            catch (err) {
+                return null;
+            }
+        }
+        async Render(em) {
+            let defaultMessage = `Hey there, are you interested in receiving my newsletter?
+
+You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.screen_name}`;
+            let html = `<div>
+                Contact your followers with this message:<br/>
+                <div style="display:flex; align-items:center">
+                    <textarea id="message" style="padding-left:4px; resize:none; width:100%; height:60px;" type="text">${defaultMessage}</textarea>
+                </div>
+                <br/>
+                <div style="display:flex; justify-content:space-between">
+                    <div>
+                        <div>Sort</div>
+                        <select id="sortSelect">
+                            <option value="influence">Most Followers</option>
+                            <option value="recent">Recently Followed</option>
+                        </select>
+                    </div>
+                    <div style="margin-left:12px">
+                        <div>Filter</div>
+                        <input id="tags" style="width:260px" type="text" placeholder="Twitter bio tags eg. health love dad">
+                    </div>
+                    <div style="margin-left:12px">
+                        <div>Send Limit</div>
+                        <input id="sendLimit" style="width:40px; margin-right:8px" type="text" placeholder="">
+                    </div>
+                    <div style="margin-left: 12px; align-self:stretch"><button style="height:100%" id="sendButton">Send To All Followers</button></div>
+                </div>
+                <br/>
+
+            </div>
+            <div class="followerHeaderRow">
+                <div class="followerIcon">&nbsp</div>
+                <div class="followerName">Name</div>
+                <div class="followerScreenName">Twitter Handle</div>
+                <div class="followerFollowersCount">Followers</div>
+                <div class="followerContacted">Contacted</div>
+                <div style="margin-left:auto; padding-right:4px; width:130px; text-align:right"><button id="toggleContactedButton">Hide Contacted</button></div>
+            </div>
+            <div id="results"></div>
+        `;
+            em.innerHTML = html;
+            this.sortElement = em.querySelector('#sortSelect');
+            this.tagsElement = em.querySelector('#tags');
+            this.messageElement = em.querySelector('#message');
+            this.toggleContactedButton = em.querySelector('#toggleContactedButton');
+            this.sendButton = em.querySelector('#sendButton');
+            this.sendLimit = em.querySelector('#sendLimit');
+            this.resultsDiv = em.querySelector('#results');
+            this.MapEvent(em, "sortSelect", "change", this.RunQuery);
+            this.MapEvent(em, "tags", "input", this.RunQuery);
+            this.MapEvent(em, "sendLimit", "input", this.SendLimitChanged);
+            this.MapEvent(em, "sendButton", "click", this.RunCampaign);
+            this.MapEvent(em, 'toggleContactedButton', 'click', this.ToggleContacted);
+            this.RunQuery();
+            /////////////////
+            //sign up to handle message campaign stuff
+            ////////////////
+            RPC.SetHandler(ClientApi.NotifyMessageCampaignStartedCall, async (c) => {
+                this.campaignRunning = true;
+                return { success: true };
+            });
+            RPC.SetHandler(ClientApi.NotifyMessageCampaignStoppedCall, async (c) => {
+                this.campaignRunning = false;
+                return { success: true };
+            });
+            RPC.SetHandler(ClientApi.NotifyMessageSentCall, async (c) => {
+                //updated the Contacted column for this user to 'Yes'
+                let updateContactedElement = em.querySelector(`#contacted-${c.args.recipientScreenName}`);
+                if (updateContactedElement)
+                    updateContactedElement.innerHTML = 'Yes';
+                if (!this.contactedVisible) {
+                    //make their row disappear
+                    //animate the rows disappearance?
+                    let updateContactedRow = em.querySelector(`#row-${c.args.recipientScreenName}`);
+                    if (updateContactedRow) {
+                        updateContactedRow.style.opacity = '0';
+                        updateContactedRow.style.maxHeight = '0px';
+                        setTimeout(() => {
+                            updateContactedRow.parentElement.removeChild(updateContactedRow);
+                        }, 1100);
+                    }
+                }
+                return { success: true };
+            });
+        }
+        async RenderCleanup() {
+            //dont need these notifications anymore
+            RPC.SetHandler(ClientApi.NotifyMessageCampaignStartedCall, null);
+            RPC.SetHandler(ClientApi.NotifyMessageCampaignStoppedCall, null);
+            RPC.SetHandler(ClientApi.NotifyMessageSentCall, null);
+        }
+    }
+});
+define("Renderer/CacheStatusComponent", ["require", "exports", "Shared/ServerApi", "Renderer/DOMComponent", "Renderer/ProgressComponent"], function (require, exports, ServerApi, DOMComponent_js_6, ProgressComponent_js_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    //displays status of the follower cache, also displays buttons which can be used to trigger download / resume / re-download of followers
+    class CacheStatusComponent extends DOMComponent_js_6.DOMComponent {
+        constructor() {
+            super(...arguments);
+            this.progressComponent = null;
+            this.destElement = null;
+            this.progressInterval = null;
+        }
+        MonitorProgress() {
+            if (this.progressInterval) {
+                //already monitoring
+                return;
+            }
+            //ok build has started.. need to poll for updates
+            this.progressInterval = setInterval(async () => {
+                try {
+                    let statusResult = await ServerApi.GetFollowerCacheStatus();
+                    if (statusResult.success) {
+                        this.progressComponent.SetProgressPercent(statusResult.completionPercent);
+                        if (statusResult.status !== ServerApi.FollowerCacheStatusEnum.InProgress) {
+                            //stop the interval
+                            clearInterval(this.progressInterval);
+                            this.progressInterval = null;
+                            //refresh the status displayed
+                            this.UpdateStatusUI();
+                        }
+                    }
+                }
+                catch (err) {
+                    console.log("MonitorProgress error:");
+                    console.error(err);
+                    clearInterval(this.progressInterval);
+                }
+            }, 2000);
+        }
+        async BuildCache(cmd) {
+            //before sending a build command we check what the current status is and make sure
+            //it makes sense to send a build command.
+            //
+            //reasons why we wouldn't send a build command:
+            //- attempt at getting cache status failed
+            //- cache status indicates its in progress on a download already
+            //- cache indicates its already complete - prompt user 'are you sure you want to rebuild?'
+            //- ??
+            //- profit
+            let statusResult;
+            let errorMessage = 'Sorry, something went wrong. Unable to retreive your followers right now.';
+            try {
+                statusResult = await ServerApi.GetFollowerCacheStatus();
+                if (statusResult.success !== true) {
+                    alert(errorMessage);
+                    return;
+                }
+            }
+            catch (err) {
+                alert(errorMessage);
+                console.log("BuildCache - failed to get current cache status");
+                console.error(err);
+                return;
+            }
+            if (statusResult.status === ServerApi.FollowerCacheStatusEnum.InProgress) {
+                alert("Follower download is in progress.");
+                return;
+            }
+            if (cmd === ServerApi.BuildFollowerCacheCommands.Rebuild) {
+                if (statusResult.status === ServerApi.FollowerCacheStatusEnum.Complete) {
+                    if (!confirm("Are you sure you want to rebuild? It takes about 15 minutes for 75k followers."))
+                        return;
+                }
+            }
+            let buildCacheResult = await ServerApi.BuildFollowerCache(cmd);
+            if (!buildCacheResult.success) {
+                console.log("BuildCache error: " + buildCacheResult.error);
+                alert(errorMessage);
+                return;
+            }
+            this.UpdateStatusUI();
+            this.MonitorProgress();
+        }
+        async Render(em) {
+            this.destElement = em;
+            this.UpdateStatusUI();
+        }
+        async UpdateStatusUI() {
+            let cacheStatusResponse = await ServerApi.GetFollowerCacheStatus();
+            let progressHtml = `<div id="progress" style="display:inline-block; margin-left: 4px; height:15px; width:100px; border:1px solid #d8d8d8"></div>`;
+            let html = '';
+            let progressShown = false;
+            let rebuildShown = false;
+            let resumeShown = false;
+            if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.None) {
+                html += `Let's get started and retreive your followers from Twitter. <button id="rebuildCache">Retreive Follower List</button>`;
+                rebuildShown = true;
+            }
+            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.Incomplete) {
+                html += `Your last follower download didn't finish. <button id="resumeCache">Resume Downloading Followers</button>`;
+                resumeShown = true;
+            }
+            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.Complete) {
+                html += `Followers download complete. <button id="rebuildCache">Refresh Downloaded Followers</button>`;
+                rebuildShown = true;
+            }
+            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.InProgress) {
+                html +=
+                    `<div style="display:flex; align-items:center">
+                Follower Download Progress: ${progressHtml}
+                </div>`;
+                progressShown = true;
+                //make sure we are monitoring progress (might already be but just make sure)
+                this.MonitorProgress();
+            }
+            this.destElement.innerHTML = html;
+            this.progressComponent = new ProgressComponent_js_1.ProgressComponent(this);
+            if (progressShown) {
+                this.progressComponent.Render(this.destElement.querySelector('#progress'));
+                this.progressComponent.SetProgressPercent(cacheStatusResponse.completionPercent);
+            }
+            if (rebuildShown)
+                this.MapEvent(this.destElement, 'rebuildCache', 'click', () => this.BuildCache(ServerApi.BuildFollowerCacheCommands.Rebuild));
+            if (resumeShown)
+                this.MapEvent(this.destElement, 'resumeCache', 'click', () => this.BuildCache(ServerApi.BuildFollowerCacheCommands.Resume));
+        }
+    }
 });
 //# sourceMappingURL=Renderer.js.map

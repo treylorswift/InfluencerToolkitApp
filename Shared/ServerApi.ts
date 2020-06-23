@@ -1,4 +1,4 @@
-import * as SVRP from './SVRP';
+import * as RPC from './RPC';
 import * as TwitterAuth from './TwitterAuth';
 
 ///////////////
@@ -18,12 +18,12 @@ export async function GetAppAuth():Promise<GetAppAuthResponse>
     return new GetAppAuthCall().Call() as Promise<GetAppAuthResponse>;
 }
 
-export class GetAppAuthCall extends SVRP.Call
+export class GetAppAuthCall extends RPC.Call
 {
     method = "GetAppAuth"
 }
 
-export class GetAppAuthResponse extends SVRP.Response
+export class GetAppAuthResponse extends RPC.Response
 {
     appAuth:TwitterAuth.AppAuth;
 }
@@ -38,12 +38,12 @@ export async function GetUserLogin():Promise<GetUserLoginResponse>
     return new GetUserLoginCall().Call() as Promise<GetUserLoginResponse>;
 }
 
-export class GetUserLoginCall extends SVRP.Call
+export class GetUserLoginCall extends RPC.Call
 {
     method = "GetUserLogin"
 }
 
-export class GetUserLoginResponse extends SVRP.Response
+export class GetUserLoginResponse extends RPC.Response
 {
     userLogin:TwitterAuth.UserLogin;
 }
@@ -57,7 +57,7 @@ export async function Login(args:LoginCall["args"]):Promise<LoginResponse>
     return new LoginCall(args).Call() as Promise<LoginResponse>;
 }
 
-export class LoginCall extends SVRP.Call
+export class LoginCall extends RPC.Call
 {
     method = "Login"
 
@@ -79,7 +79,7 @@ export class LoginCall extends SVRP.Call
     }
 }
 
-export class LoginResponse extends SVRP.Response
+export class LoginResponse extends RPC.Response
 {
     userLogin:TwitterAuth.UserLogin;
 }
@@ -92,7 +92,7 @@ export async function GetFollowerCacheStatus():Promise<GetFollowerCacheStatusRes
     return new GetFollowerCacheStatusCall().Call() as Promise<GetFollowerCacheStatusResponse>;
 }
 
-export class GetFollowerCacheStatusCall extends SVRP.Call
+export class GetFollowerCacheStatusCall extends RPC.Call
 {
     method = "GetFollowerCacheStatus"
 }
@@ -105,7 +105,7 @@ export enum FollowerCacheStatusEnum
     Complete="Complete" //a cache exists and no operation is being performed right now
 }
 
-export class GetFollowerCacheStatusResponse extends SVRP.Response
+export class GetFollowerCacheStatusResponse extends RPC.Response
 {
     status:FollowerCacheStatusEnum
 
@@ -119,12 +119,12 @@ export class GetFollowerCacheStatusResponse extends SVRP.Response
 //BuildCache
 //////////////////////////
 
-export async function BuildFollowerCache(command:BuildFollowerCacheCommands):Promise<SVRP.Response>
+export async function BuildFollowerCache(command:BuildFollowerCacheCommands):Promise<RPC.Response>
 {
     return new BuildFollowerCacheCall({command:command}).Call();
 }
 
-export class BuildFollowerCacheCall extends SVRP.Call
+export class BuildFollowerCacheCall extends RPC.Call
 {
     method = "BuildFollowerCache"
 
@@ -164,7 +164,7 @@ export async function QueryFollowerCache(q:FollowerCacheQuery):Promise<QueryFoll
     return new QueryFollowerCacheCall({query:q}).Call() as Promise<QueryFollowerCacheResponse>;
 }
 
-export class QueryFollowerCacheCall extends SVRP.Call
+export class QueryFollowerCacheCall extends RPC.Call
 {
     method = "QueryFollowerCache"
 
@@ -191,7 +191,7 @@ export type FollowerCacheQueryResult =
     profileImageUrl:string
 }
 
-export class QueryFollowerCacheResponse extends SVRP.Response
+export class QueryFollowerCacheResponse extends RPC.Response
 {
     followers:Array<FollowerCacheQueryResult>
 }
@@ -217,12 +217,12 @@ export type MessagingCampaign =
     }
 }
 
-export async function RunMessagingCampaign(c:MessagingCampaign):Promise<SVRP.Response>
+export async function RunMessagingCampaign(c:MessagingCampaign):Promise<RPC.Response>
 {
-    return new RunMessagingCampaignCall({campaign:c}).Call() as Promise<SVRP.Response>;
+    return new RunMessagingCampaignCall({campaign:c}).Call() as Promise<RPC.Response>;
 }
 
-export class RunMessagingCampaignCall extends SVRP.Call
+export class RunMessagingCampaignCall extends RPC.Call
 {
     method = "RunMessagingCampaign"
 
