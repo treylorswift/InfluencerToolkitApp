@@ -1,9 +1,24 @@
 import * as SVRP from './SVRP';
 import * as TwitterAuth from './TwitterAuth';
 
+///////////////
+//Server Api
+//(calls the client can make to the server)
+//////////////
+
+//////////////////////
+//Get App Auth keys
+/////////////////////
+
 //returns whatever Twitter app API keys were last used to log a user in.
 //they are saved to disk after the first successful login and persist across app launches
-export class GetAppAuth extends SVRP.Call
+
+export async function GetAppAuth():Promise<GetAppAuthResponse>
+{
+    return new GetAppAuthCall().Call() as Promise<GetAppAuthResponse>;
+}
+
+export class GetAppAuthCall extends SVRP.Call
 {
     method = "GetAppAuth"
 }
@@ -12,6 +27,10 @@ export class GetAppAuthResponse extends SVRP.Response
 {
     appAuth:TwitterAuth.AppAuth;
 }
+
+//////////////////////
+//Get User login
+/////////////////////
 
 //returns info for the currently logged in user
 export async function GetUserLogin():Promise<GetUserLoginResponse>
@@ -100,28 +119,121 @@ export class GetFollowerCacheStatusResponse extends SVRP.Response
 //BuildCache
 //////////////////////////
 
-export async function BuildCache(command:BuildCacheCommands):Promise<SVRP.Response>
+export async function BuildFollowerCache(command:BuildFollowerCacheCommands):Promise<SVRP.Response>
 {
-    return new BuildCacheCall({command:command}).Call();
+    return new BuildFollowerCacheCall({command:command}).Call();
 }
 
-export class BuildCacheCall extends SVRP.Call
+export class BuildFollowerCacheCall extends SVRP.Call
 {
-    method = "BuildCache"
+    method = "BuildFollowerCache"
 
-    constructor(args:BuildCacheCall["args"])
+    constructor(args:BuildFollowerCacheCall["args"])
     {
         super();
         this.args = args;
     }
 
     args: {
-        command:BuildCacheCommands,
+        command:BuildFollowerCacheCommands,
     }
 }
 
-export enum BuildCacheCommands
+export enum BuildFollowerCacheCommands
 {
     Rebuild,
     Resume
 }
+
+/////////////////////////////////////////
+//Query Follower Cache
+//////////////////////////
+export type FollowerCacheQuery =
+{
+    campaignId:string
+    tags:Array<string>
+    sort:MessagingCampaignSortType
+    offset:number
+    limit:number
+    includeContacted:boolean
+    useDryRunMessageHistory:boolean
+}
+
+export async function QueryFollowerCache(q:FollowerCacheQuery):Promise<QueryFollowerCacheResponse>
+{
+    return new QueryFollowerCacheCall({query:q}).Call() as Promise<QueryFollowerCacheResponse>;
+}
+
+export class QueryFollowerCacheCall extends SVRP.Call
+{
+    method = "QueryFollowerCache"
+
+    constructor(args:QueryFollowerCacheCall["args"])
+    {
+        super();
+        this.args = args;
+    }
+
+    args: {
+        query:FollowerCacheQuery,
+    }
+}
+
+export type FollowerCacheQueryResult = 
+{
+    idStr:string
+    screenName:string
+    name:string
+    description:string
+    age:number
+    contactDate:number //this is a millisecond value that can be passed to new Date(contactDate) - if null, they have not been contacted
+    followersCount:number
+    profileImageUrl:string
+}
+
+export class QueryFollowerCacheResponse extends SVRP.Response
+{
+    followers:Array<FollowerCacheQueryResult>
+}
+
+/////////////////////////////////////////
+//Run Messaging Campaign
+//////////////////////////
+
+export type MessagingCampaignSortType = "influence" | "recent"
+export type MessagingCampaignSchedulingType = "burst" | "spread"
+
+export type MessagingCampaign =
+{
+    message:string
+    campaign_id:string
+    sort:MessagingCampaignSortType
+    scheduling:MessagingCampaignSchedulingType
+    dryRun:boolean
+    count?:number
+    filter?:
+    {
+        tags?:Array<string>
+    }
+}
+
+export async function RunMessagingCampaign(c:MessagingCampaign):Promise<SVRP.Response>
+{
+    return new RunMessagingCampaignCall({campaign:c}).Call() as Promise<SVRP.Response>;
+}
+
+export class RunMessagingCampaignCall extends SVRP.Call
+{
+    method = "RunMessagingCampaign"
+
+    constructor(args:RunMessagingCampaignCall["args"])
+    {
+        super();
+        this.args = args;
+    }
+
+    args: {
+        campaign:MessagingCampaign
+    }
+}
+

@@ -9,6 +9,7 @@ import {TwitterFollower} from './TwitterUser';
 import * as DB from 'better-sqlite3';
 import {MessageEvent, MessagingCampaign} from './MessagingCampaign'
 import {FollowerCacheStatusEnum} from '../Shared/IPCAPI'
+import {FollowerCacheQuery,FollowerCacheQueryResult} from '../Shared/IPCAPI'
 
 export type TwitterFollower = 
 {
@@ -20,7 +21,7 @@ export type TwitterFollower =
 
 //the db architecture is gonna have to look something like this
 //
-//followers table - id_str, screen name, follower count (indexed column), hash of bio
+//followers table - id_str, screen name, follower count (indexed column), bio/description, etc
 //
 //tags table - tag, id_str
 //
@@ -35,8 +36,8 @@ export type TwitterFollower =
 //
 //what happens if someone changes their bio later?
 //we need to be able to detect that change to remove the non-existing tags that remain in the tags table, and
-//also add new tags that were not there before. this means we have to at least store a hash of their bio to detect that it has changed
-//and when the change is detected, remove all entries in the tag table that match their id.. then add new entries for the tags in their new bio
+//also add new tags that were not there before. this means we have to store their bio/description and 
+//when we notice that its changed, remove all entries in the tag table that match their id.. then add new entries for the tags in their new bio
 
 //we keep a row in the Tasks table as we are pulling in followers so we know how far along we are (and, coming back later, we can see whether we finished or
 //need to resume)
@@ -60,8 +61,6 @@ export class TwitterDB
             //make sure the essential tables are initialized
 
             //TwitterUsers tracks any/all the users on twitter we might be concerned with
-            //bio_hash is a hash of their bio and is used to know whether their bio has changed since
-            //we last cached its tags in our Tags table (defined below)
             //
             //in theory screen_name should be unique, and would be unique in twitter's own databases,
             //but since we are only incrementally replicating parts of their DB, it's possible people could
@@ -71,16 +70,32 @@ export class TwitterDB
                 CREATE TABLE IF NOT EXISTS TwitterUsers (
                     id_str TEXT NOT NULL UNIQUE PRIMARY KEY,
                     screen_name TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    verified INTEGER,
+                    statuses_count INTEGER,
+                    friends_count INTEGER,
                     followers_count INTEGER,
-                    bio_hash TEXT NOT NULL
+                    description TEXT NOT NULL,
+                    profile_image_url_https TEXT
                 );
             `);
 
             createUsers.run();
 
+            //create an index on the followers_count so they will sort by followers quickly
+            let createFollowersCountIndex = this.db.prepare(`
+                CREATE INDEX IF NOT EXISTS TwitterFollowersCountIndex ON TwitterUsers (
+	                "followers_count"
+                );
+            `);
+
+            createFollowersCountIndex.run();
+
             //tags just establishes which tags are present in
-            //which users bio. the bio_hash field in the TwitterUser table is used to
-            //track whether a user changes their bio.. and if so, this table gets updated appropriately
+            //which users bio. the description/bio field in the TwitterUser table is checked for changes
+            //whenever a user is added / re-added to the TwitterUsers table. if their description changes,
+            //all their tags previously in the Tags table are removed.. and then new tags are created for
+            //the new description
             //
             //the unique constraint ensures we dont store the same tag more than once for the same user
             //(if a user has the same word in their bio in multiple places for example)
@@ -93,6 +108,14 @@ export class TwitterDB
             `);
 
             createTags.run();
+
+            //create an index on the tags so they can be matched quickly
+            let createTagIndex = this.db.prepare(`
+                CREATE INDEX IF NOT EXISTS TwitterTagIndex ON TwitterTags (
+            	    "tag"
+                );
+            `);
+            createTagIndex.run();
 
             //establishes who follows who
             //id_str is the one who follows id_str_followee
@@ -253,8 +276,10 @@ export abstract class TwitterFollowerCacheBase
     abstract WriteFollowers(followers:Array<{follower:any, dbIndex:number}>); //'follower' is what comes right out of the twitter api pipe
     abstract SaveProgress(p:FollowerTaskProgress);
 
+    abstract async Query(q:FollowerCacheQuery):Promise<Array<FollowerCacheQueryResult>>;
+
     //@ts-ignore
-    async BuildFollowerCache():Promise<boolean>
+    async Build():Promise<boolean>
     {
         try
         {
@@ -462,18 +487,16 @@ export abstract class TwitterFollowerCacheBase
         this.buildInProgress = false;
         return true;
     }
-
 }
 
-export type TwitterFollowerCacheQuery =
+export enum SendDelayReason
 {
-    campaign_id:string
-    tags:Array<string>
-    sort:"influence"|"recent"
-    offset:number
-    limit:number
+    NoDelay,
+    Spread,
+    RateLimit
 }
 
+type SendDelayInfo = {millisToWait:number,reason:SendDelayReason}
 
 export class MessageHistory
 {
@@ -485,7 +508,7 @@ export class MessageHistory
 
     //we keep the most recently sent 1000 messages in memory because we need to refer to those
     //in order to properly schedule sends
-    eventMemCache:Array<MessageEvent>;
+    events:Array<MessageEvent>;
 
     constructor(campaign:MessagingCampaign)
     {
@@ -494,7 +517,7 @@ export class MessageHistory
         this.twitterDB = new TwitterDB();
         this.twitterDB.Init();
         this.db = this.twitterDB.GetDB();
-        this.eventMemCache = new Array<MessageEvent>();
+        this.events = new Array<MessageEvent>();
 
         this.tableName = 'TwitterMessageHistory';
         if (campaign.dryRun===true)
@@ -503,12 +526,12 @@ export class MessageHistory
         //get the most recent 1000 messages sent
         try
         {
-            let initCacheCmd = this.db.prepare(`SELECT * FROM {this.tableName} WHERE campaign_id=? ORDER BY date DESC LIMIT 1000`);
-            let result = initCacheCmd.run([this.campaign.campaign_id]);
+            let initCacheCmd = this.db.prepare(`SELECT * FROM ${this.tableName} WHERE campaign_id=? ORDER BY date DESC LIMIT 1000`);
+            let result = initCacheCmd.all([this.campaign.campaign_id]);
 
             for (var i=0; i<result.length; i++)
             {
-                this.eventMemCache.push({campaign_id:result[i].campaign_id,recipient:result[i].id_str,time:new Date(result[i].date)});
+                this.events.push({campaign_id:result[i].campaign_id,recipient:result[i].id_str,time:new Date(result[i].date)});
             }
         }
         catch (err)
@@ -528,18 +551,16 @@ export class MessageHistory
                 return false;
             }
 
-            //type MessageEvent = {campaign_id:string,recipient:string, time:Date};
-            //type MessageEventJson = {campaign_id:string,recipient:string, time:string};
-            let storeCmd = this.db.prepare(`INSERT INTO TwitterMessageHistory VALUES(?,?,?)`);
+            let storeCmd = this.db.prepare(`INSERT INTO ${this.tableName} VALUES(?,?,?)`);
 
-            storeCmd.run([e.campaign_id,e.recipient,e.time.getTime()]);
+            storeCmd.run([e.campaign_id, e.recipient, e.time.getTime()]);
 
             //store this into the in memory event cache
-            this.eventMemCache.push(e);
+            this.events.push(e);
 
             //we dont need to keep more than 1000 events in memory
-            if (this.eventMemCache.length>=1001)
-                this.eventMemCache.shift();
+            if (this.events.length>=1001)
+                this.events.shift();
 
             return true;
         }
@@ -550,6 +571,95 @@ export class MessageHistory
             return false;
         }
     }
+
+    //the time until next send is determined by
+    //- history of messages sent thus far
+    //- scheduling preference (burst or spread)
+    //- twitter rate limit of 1000 messages per 24 hour period
+    CalcMillisToWaitUntilNextSend(campaign:MessagingCampaign):SendDelayInfo
+    {
+        var curTime = new Date();
+        let millisIn24Hours = 1000*60*60*24;
+
+        //in initial cases there is no need to wait and we can send with no delay
+        let minimumWait = 0;
+        let minimumDelayReason = SendDelayReason.NoDelay;
+
+        //spread scheduling can impose a delay after the very first sent message.
+        //it will increase the minimumWait and set the minimumDelayReason appropriately (if necessary)
+        if (campaign.scheduling==="spread")
+        {
+            //we want to evenly distribute 1000 messages over a 24 hour period
+            let minimumSendInterval = millisIn24Hours / 1000;
+
+            //spread scheduling dictates that the next send should occur minimumSendInterval after the most recently sent message.
+            if (this.events.length>0)
+            {
+                let mostRecentSend = this.events[this.events.length-1].time;
+                let timeToSend = new Date(mostRecentSend.getTime() + minimumSendInterval);
+
+                //how much time remains between now and the time at which spread scheduling dictates we should send?
+                minimumWait = timeToSend.getTime() - curTime.getTime();
+                if (minimumWait>0)
+                {
+                    //impose minimum delay due to spread scheduling
+                    minimumDelayReason = SendDelayReason.Spread;
+                }
+                else
+                {
+                    //we're already past the minimum send interval, spread scheduling imposes no additional minimum wait
+                    minimumWait = 0;
+                }
+            }
+        }
+
+        //if we haven't yet sent 1000 messages, twitter api rate limits dont apply so we can 
+        //we know we can sent the next message without further delay
+        if (this.events.length<1000)
+            return {millisToWait:minimumWait,reason:minimumDelayReason};
+
+        //we HAVE sent 1000 messages... 
+
+        //look back 1000 messages into the past. when did we send that one?
+        //was it more than 24 hours ago? if so, rate limits dont apply and we can send without
+        //further delay
+        let indexOf1000thMessage = this.events.length - 1000;
+        let event = this.events[indexOf1000thMessage];
+
+        var twentyTwentyTwentyFourHoursAgooo = new Date(curTime.getTime() - millisIn24Hours);
+
+        //if the 1000th message in the past is more than 24 hours old, we can send without further delay
+        if (event.time.getTime() < twentyTwentyTwentyFourHoursAgooo.getTime())
+            return {millisToWait:minimumWait,reason:minimumDelayReason};
+
+        //ok so the 1000th message is within the past 24 hours. the time at which
+        //we will be able to send is 24 hours after that message.
+        let timeToSend = new Date(event.time.getTime() + millisIn24Hours);
+
+        //how much time remains between now and the time at which api rate limits dictate we can send?
+        let timeToWait = timeToSend.getTime() - curTime.getTime();
+        if (timeToWait<0)
+        {
+            console.log(`Unexpected error calculating timeToWait, curTime: ${curTime} - timeToSend: ${timeToSend}`);
+            timeToWait = 0;
+        }
+
+        //reconcile timeToWait against the minimumWait calculated above (possibly by spread scheduling)
+        //its possible api rate limits may not dictate the delay at this point but if api rate limit
+        //requires us to wait longer than the minimumWait calculated above, we must wait for the longer
+        //timeToWait, and note that the reason is due to api rate limits
+        if (timeToWait>minimumWait)
+        {
+            return {millisToWait:timeToWait, reason:SendDelayReason.RateLimit}
+        }
+        else
+        {
+            //api rate limits do not require any delay beyond the minimum already calculated so we just
+            //return the minimum delay as it was already calculated
+            return {millisToWait:minimumWait,reason:minimumDelayReason};
+        }
+    }
+
 }
 
 export class TwitterFollowerCacheSQL extends TwitterFollowerCacheBase
@@ -565,32 +675,80 @@ export class TwitterFollowerCacheSQL extends TwitterFollowerCacheBase
         this.db = this.twitterDB.GetDB();
     }
 
-    Query(q:TwitterFollowerCacheQuery):Array<TwitterFollower>
+    async Query(q:FollowerCacheQuery):Promise<Array<FollowerCacheQueryResult>>
     {
-        //this where the money is made..
-        //
         //we must return a list of followers who
         //1) are following us
         //2) who have not yet been contacted by this campaign
         //3) are filtered by the tags specified in the query
+        let messageHistoryTable = 'TwitterMessageHistory';
+        if (q.useDryRunMessageHistory)
+            messageHistoryTable = 'TwitterDryRunMessageHistory';
+
         try
         {
             let queryString =
-               `SELECT TwitterFollowers.id_str,TwitterFollowers.age,TwitterUsers.followers_count
+               `SELECT TwitterFollowers.id_str,
+                       TwitterUsers.screen_name,
+                       TwitterUsers.name,
+                       TwitterUsers.description,
+                       TwitterFollowers.age,
+                       TwitterUsers.followers_count,
+                       TwitterUsers.profile_image_url_https,
+                       (
+                           SELECT date
+                           FROM ${messageHistoryTable}
+                           WHERE campaign_id=? AND id_str=TwitterFollowers.id_str
+                       ) as contact_date
                 FROM TwitterFollowers
                 INNER JOIN TwitterUsers
-                ON TwitterFollowers.id_str=TwitterUsers.id_str
-                LEFT JOIN TwitterMessageHistory
-                ON TwitterMessageHistory.campaign_id=? AND TwitterMessageHistory.id_str=TwitterFollowers.id_str `
+                ON TwitterFollowers.id_str=TwitterUsers.id_str `
          
-            let queryValues = [q.campaign_id];
+            let queryValues = [q.campaignId];
 
-            if (!q.tags || q.tags.length===0)
+            //before we process tags.. need to pre-process and clean out any empty/invalid tags
+            if (q.tags && !Array.isArray(q.tags))
             {
-                queryString +=
-                   `WHERE TwitterFollowers.id_str_followee=? AND TwitterMessageHistory.id_str is NULL `;
+                console.log('Query - tags passed in was not a valid array: ' + JSON.stringify(q.tags));
+                return null;
             }
-            else
+
+            if (q.tags)
+            {
+                for (var i=0; i<q.tags.length; i++)
+                {
+                    //check for empty tag and if found, remove
+                    if (q.tags[i]==="")
+                    {
+                        q.tags.splice(i,1);
+                        i--;
+                    }
+                }
+            }
+
+            /////////////////////
+            //build up the WHERE clause
+            //1) always require that the follower table row actually match us (ie, we only want ppl who are following us)
+            //2) optionally include a WHERE <date contacted> 'is NULL' check on the message history to only include the row if the follower hasnt been contacted yet
+            //3) optionally include a WHERE <number of tags matched> >= 1 check on the tags table to require that the tags array have at least 1 match
+            /////////////////////
+            queryString +=
+                `WHERE TwitterFollowers.id_str_followee=? `;
+                
+            queryValues.push(this.id_str);
+
+            //if the query specifically does not want to include
+            //results of people we've already contacted, we need to add an additional WHERE clause
+            //to strip them out
+            if (q.includeContacted!==true)
+            {
+                //make sure 
+                queryString += ` AND contact_date is NULL `;
+
+            }
+
+            //add a clause for tag matching
+            if (q.tags && q.tags.length>0)
             {
                 //need to generate a string that looks like (?,?,?,?...) with a single ? for each tag we're looking for
                 let tagMatchString = '(';
@@ -602,33 +760,66 @@ export class TwitterFollowerCacheSQL extends TwitterFollowerCacheBase
                 }
                 tagMatchString += ')'
 
-                //the inner query counts all the rows where the follower's id is connected to any of the matching tags
-                //the condition just checks to see whether that count of rows is at least 1 (meaning, any of the tags matched)
-                //if you wanted followers who match ALL the tags, you could change 1 <=  to be N=, where N is the # of tags you're looking for
-                queryString += 
-                   `WHERE TwitterFollowers.id_str_followee=? AND TwitterMessageHistory.id_str is NULL AND 1 <=
+                queryString += `AND 1 <=
                     (
                         SELECT COUNT(*)
                         FROM TwitterTags
                         WHERE TwitterTags.id_str=TwitterFollowers.id_str AND TwitterTags.tag in ${tagMatchString}
                     ) `
 
-                queryValues.push(this.id_str);
-
                 for (var i=0; i<q.tags.length; i++)
                     queryValues.push(q.tags[i]);
             }
+
+            //WHERE clause is done.. now add ORDER BY
 
             if (!q.sort || q.sort==='influence')
                 queryString += `ORDER BY TwitterUsers.followers_count DESC`;
             else
                 queryString += `ORDER BY TwitterFollowers.age ASC`;
+            
+            //now add LIMIT..
+
+            if (q.offset>0 && q.limit>0)
+            {
+                queryString += ` LIMIT ?,?`
+                queryValues.push(q.offset.toString());
+                queryValues.push(q.limit.toString());
+            }
+            else
+            if (q.limit>0)
+            {
+                queryString += ` LIMIT ?`
+                queryValues.push(q.limit.toString());
+            }
+            else
+            if (q.offset>0)
+            {
+                queryString += ` OFFSET ?`
+                queryValues.push(q.offset.toString());
+            }
 
             let queryCommand = this.db.prepare(queryString);
 
-            let result = queryCommand.all(queryValues);
+            let results = queryCommand.all(queryValues);
 
-            return new Array<TwitterFollower>();
+            let arr = new Array<FollowerCacheQueryResult>();
+            for (var i=0; i<results.length; i++)
+            {
+                let r = results[i];
+                arr.push({
+                    idStr:r.id_str,
+                    screenName:r.screen_name,
+                    name:r.name,
+                    description:r.description,
+                    age:r.age,
+                    followersCount:r.followers_count,
+                    contactDate:r.contact_date,
+                    profileImageUrl:r.profile_image_url_https
+                });
+            }
+
+            return arr;
         }
         catch (err)
         {
@@ -787,23 +978,21 @@ export class TwitterFollowerCacheSQL extends TwitterFollowerCacheBase
                     let dbIndex = followers[i].dbIndex;
 
                     //before we update the entry for this follower in the TwitterUsers table,
-                    //we need to grab the bio_hash and determine if their bio has changed.
+                    //we need to check the description/bio to see if it has changed
                     //if so, we need to update our tags table to reflect the current tags in their bio
-        
-                    //hash of the current bio
-                    let bioHash = crypto.createHash("sha256").update(follower.description).digest("hex");
 
-                    //what hash is stored in the DB ?
-                    let getCurHash = this.db.prepare(`SELECT bio_hash from TwitterUsers WHERE id_str=${follower.id_str}`);
-                    let result = getCurHash.get();
+                    //what bio/description is currently in the db?
+                    let getCurBio = this.db.prepare(`SELECT description from TwitterUsers WHERE id_str=${follower.id_str}`);
+                    let result = getCurBio.get();
             
-                    //unless our cached bio_hash matches the one we're writing.. we're gonna insert tags for this user..
+                    //we will insert tags for this user UNLESS the description we've got cached
+                    //in the db right now matches the one we're inserting
                     let insertTags = true;
 
                     if (result)
                     {
                         //if the description/bio hasnt changed, we dont need to insert tags. just update the screenname/followercount/etc
-                        if (result.bio_hash===bioHash)
+                        if (result.description===follower.description)
                         {
                             insertTags = false;
                         }
@@ -840,9 +1029,14 @@ export class TwitterFollowerCacheSQL extends TwitterFollowerCacheBase
 
                     //ok, tags have been handled. update the entry for the user itself
 
-                    const replaceUser = this.db.prepare('REPLACE INTO TwitterUsers (id_str,screen_name,followers_count,bio_hash) VALUES (?,?,?,?)');
+                    const replaceUser = this.db.prepare('REPLACE INTO TwitterUsers (id_str,screen_name,name,verified,statuses_count,friends_count,followers_count,description,profile_image_url_https) VALUES (?,?,?,?,?,?,?,?,?)');
                 
-                    let replaceResult = replaceUser.run([follower.id_str, follower.screen_name, follower.followers_count, bioHash]);
+                    //save a little space if we know they havent changed away from the default profile image
+                    let profile_image_url_https = follower.profile_image_url_https;
+                    if (follower.default_profile_image)
+                        profile_image_url_https = '';
+
+                    let replaceResult = replaceUser.run([follower.id_str, follower.screen_name, follower.name, follower.verified?1:0, follower.statuses_count, follower.friends_count, follower.followers_count, follower.description, profile_image_url_https]);
                    
                     //now add this follower/followee relationship to the followers table
                     const insertFollower = this.db.prepare('INSERT INTO TwitterFollowers (id_str, id_str_followee, age) VALUES (?,?,?)');

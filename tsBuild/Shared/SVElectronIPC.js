@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const SVRP = require("./SVRP.js");
-var g_logAll = true;
+var g_logAll = false;
 if (g_logAll)
     console.log("SVElectronIPC logging all calls");
 //the SVElectronIPC is used to make calls, and receive responses,
@@ -143,23 +143,29 @@ class SVElectronIPC extends SVRP.Transport {
         }
         this.responseHandlers.delete(json.sequence);
     }
-    CallNoResponse(c) {
+    CallNoResponse(c, options) {
         //we determine the contents of the 'sequence'
         //main difference is that a sequence is not added to the call json,
         //so the other side will know not to send back a response
         //we will also not create a response handler in anticipation of it..
         delete c.sequence;
-        if (g_logAll)
+        var log = g_logAll;
+        if (options && options.log !== undefined)
+            log = options.log === true;
+        if (log)
             console.log('CallNoResponse: ' + JSON.stringify(c));
         //store these promise functions in our map so that this Call can be resolved later
         //when a matching sequence comes back from the other side
         sendFunc(c);
     }
-    Call(c) {
+    Call(c, options) {
         return new Promise((resolve, reject) => {
             //we determine the contents of the 'sequence'
             c.sequence = this.sequence;
-            if (g_logAll)
+            var log = g_logAll;
+            if (options && options.log !== undefined)
+                log = options.log === true;
+            if (log)
                 console.log('Call: ' + JSON.stringify(c));
             //store these promise functions in our map so that this Call can be resolved later
             //when a matching sequence comes back from the other side

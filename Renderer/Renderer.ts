@@ -1,4 +1,5 @@
 import * as IPCAPI from "../Shared/IPCAPI.js"
+import * as ClientApi from "../Shared/ClientApi.js"
 import * as SVRP from "../Shared/SVRP.js"
 import { SVDOMComponent } from "./SVDOMComponent.js"
 import { SVDOMHost } from "./SVDOMHost.js"
@@ -39,15 +40,26 @@ class LoginPage extends SVDOMComponent
 
     async Render(em:Element)
     {
+        let link = "https://apps.twitter.com";
         var html = 
-           `<br/><br/>
-            Enter your Twitter App API keys<br/><br/>
-            You can obtain keys <a href="https://apps.twitter.com" target="_blank">here</a></br /><br/>
-            As a precaution for your own sake, consider supplying keys that do not have permission to send direct messages.<br/><br/>
-            Consumer Key <input type="text" id="consumer_key" ><br /><br/>
-            Consumer Secret <input type="text" id="consumer_secret" ><br /><br/>
-            <button id="login">Login with Twitter</button>
-            <input id="rememberMe" type="checkbox">Remember Me`;
+           `<br/>
+            <div style="position:fixed; left:0; top:0; width:100vw; height:100vh; display:flex">
+            <div style="margin:auto">
+                <div style="display:flex; justify-content:center">
+                    <div style="display:inline; width:320px;"><img style="width:100%;height:auto" src="logo.png"></div>
+                </div>
+                <br/>
+                <div style="display:flex; justify-content:center">
+                <div style="text-align:center">
+                    To login, you will need to provide Twitter App API keys.<br /><br/>You can obtain keys from <a href="${link}" target="_blank">${link}</a></br /><br/>
+                    <div style="display:inline-block; width:130px; text-align:right">Consumer Key</div>  <input type="text" style="width:300px" id="consumer_key" ><br /><br/>
+                    <div style="display:inline-block; width:130px; text-align:right">Consumer Secret</div> <input type="text" style="width:300px" id="consumer_secret" ><br /><br/>
+                    <button id="login">Login with Twitter</button><br/>
+                    <input id="rememberMe" type="checkbox">Remember Me
+                </div>
+                </div>
+            </div>
+            </div>`;
 
         em.innerHTML = html;
 
@@ -60,12 +72,11 @@ class LoginPage extends SVDOMComponent
         //previous login worked, or partially worked with good app keys but perhaps a bad user password)
         try
         {
-            let appAuthRequest = new IPCAPI.GetAppAuth();
-            let result = await appAuthRequest.Call() as IPCAPI.GetAppAuthResponse;
-            if (result.appAuth)
+            let getAppAuthResult = await IPCAPI.GetAppAuth();
+            if (getAppAuthResult.appAuth)
             {
-                this.ckey.value = result.appAuth.consumer_key;
-                this.csec.value = result.appAuth.consumer_secret;
+                this.ckey.value = getAppAuthResult.appAuth.consumer_key;
+                this.csec.value = getAppAuthResult.appAuth.consumer_secret;
             }
         }
         catch (err)
@@ -130,7 +141,6 @@ export class Site extends SVDOMHost
         {
             //apply the title bar and router content div
             em.innerHTML = `
-                <div id="titleBar" style="text-align:center">Influencer Toolkit</div>
                 <div id="routerContentId"></div>`;
 
             this.routerContentElement = em.querySelector('#routerContentId');   
@@ -159,6 +169,7 @@ export class Site extends SVDOMHost
     async onload()
     {
         SVRP.SetTransport(new SVElectronIPC());
+
         this.Render(document.getElementById("site"));
     }
 

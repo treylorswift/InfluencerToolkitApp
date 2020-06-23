@@ -4,10 +4,10 @@
         "target": "es2018",
         "lib": [ "es2018", "DOM" ],
         "sourceMap": true,
-        "outFile": "../tsBuild/Main/UI.js"
+        "outFile": "../tsBuild/Main/Renderer.js"
     },
     "files": [
-        "ITKRenderer.ts",
+        "Renderer.ts",
         "HomePage.ts",
         "SVDOMComponent.ts",
         "SVDOMHost.ts",

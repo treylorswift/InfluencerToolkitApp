@@ -3,11 +3,11 @@
 //whether it be inter process communication, websocket communication, etc
 Object.defineProperty(exports, "__esModule", { value: true });
 class Call {
-    Call() {
-        return Transport.g_transport.Call(this);
+    Call(options) {
+        return Transport.g_transport.Call(this, options);
     }
-    CallNoResponse() {
-        return Transport.g_transport.CallNoResponse(this);
+    CallNoResponse(options) {
+        return Transport.g_transport.CallNoResponse(this, options);
     }
 }
 exports.Call = Call;

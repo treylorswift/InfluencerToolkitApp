@@ -1,6 +1,6 @@
 import * as SVRP from './SVRP.js';
 
-var g_logAll = true;
+var g_logAll = false;
 
 if (g_logAll)
     console.log("SVElectronIPC logging all calls");
@@ -205,7 +205,7 @@ export class SVElectronIPC extends SVRP.Transport
         this.responseHandlers.delete(json.sequence);
     }
 
-    CallNoResponse(c:SVRP.Call)
+    CallNoResponse(c:SVRP.Call,options?:SVRP.CallOptions)
     {
         //we determine the contents of the 'sequence'
         //main difference is that a sequence is not added to the call json,
@@ -213,7 +213,12 @@ export class SVElectronIPC extends SVRP.Transport
         //we will also not create a response handler in anticipation of it..
         delete c.sequence;
 
-        if (g_logAll)
+        var log = g_logAll;
+
+        if (options && options.log!==undefined)
+            log = options.log===true;
+
+        if (log)
             console.log('CallNoResponse: ' + JSON.stringify(c));
 
         //store these promise functions in our map so that this Call can be resolved later
@@ -222,14 +227,19 @@ export class SVElectronIPC extends SVRP.Transport
     }
 
 
-    Call<T extends SVRP.Call>(c:T):Promise<SVRP.Response>
+    Call<T extends SVRP.Call>(c:T,options?:SVRP.CallOptions):Promise<SVRP.Response>
     {
         return new Promise((resolve,reject)=>
         {
             //we determine the contents of the 'sequence'
             c.sequence = this.sequence;
 
-            if (g_logAll)
+            var log = g_logAll;
+
+            if (options && options.log!==undefined)
+                log = options.log===true;
+
+            if (log)
                 console.log('Call: ' + JSON.stringify(c));
 
             //store these promise functions in our map so that this Call can be resolved later

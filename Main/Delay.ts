@@ -1,12 +1,15 @@
 export async function DelaySeconds(secs:number):Promise<void>
 {
+    return DelayMilliseconds(secs*1000);
+}
+
+export async function DelayMilliseconds(millis:number):Promise<void>
+{
     return new Promise<void>((resolve,reject)=>
     {
-        let oneMinuteMillis = 1000*secs;
-
         setTimeout(()=>
         {
             return resolve();
-        },oneMinuteMillis);
+        },millis);
     });
 }

@@ -1,16 +1,21 @@
 //classes and types used for remote procedure calls.. calls that have to cross some kind of boundary
 //whether it be inter process communication, websocket communication, etc
 
+export type CallOptions =
+{
+    log:boolean //if defined, overrides default logging behavior for this call
+}
+
 export class Call
 {
-    Call():Promise<Response>
+    Call(options?:CallOptions):Promise<Response>
     {
-        return Transport.g_transport.Call(this);
+        return Transport.g_transport.Call(this,options);
     }
 
-    CallNoResponse()
+    CallNoResponse(options?:CallOptions)
     {
-        return Transport.g_transport.CallNoResponse(this);
+        return Transport.g_transport.CallNoResponse(this,options);
     }
 
     method:string
@@ -89,8 +94,8 @@ export abstract class Transport
     static g_transport:Transport = null;
 
     abstract SetHandler<T extends {new (...args: any):Call}>(className: T, func:CallHandler);
-    abstract Call<T extends Call>(c:T):Promise<Response>;
-    abstract CallNoResponse(c:Call);
+    abstract Call<T extends Call>(c:T,options?:CallOptions):Promise<Response>;
+    abstract CallNoResponse<T extends Call>(c:T, options?:CallOptions);
 
 }
 

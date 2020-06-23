@@ -4,6 +4,8 @@ const fs = require("fs");
 const TwitterAuth = require("../Shared/TwitterAuth");
 const TwitterUser_1 = require("./TwitterUser");
 const Twitter = require("twitter-lite");
+const MessagingCampaign_1 = require("./MessagingCampaign");
+const ClientApi = require("../Shared/ClientApi");
 //once we obtain app auth and user auth keys, we won't require login
 let g_appAuth = null;
 let g_userLogin = null;
@@ -61,7 +63,7 @@ SVRP.SetTransport(new SVElectronIPC_1.SVElectronIPC());
 /////////////////
 //GetAppAuth - returns Twitter App API keys
 ////////////////
-SVRP.SetHandler(IPCAPI.GetAppAuth, async (json) => {
+SVRP.SetHandler(IPCAPI.GetAppAuthCall, async (json) => {
     return { success: true, appAuth: g_appAuth };
 });
 ////////////////
@@ -82,18 +84,67 @@ SVRP.SetHandler(IPCAPI.GetFollowerCacheStatusCall, async (json) => {
     return { success: true, status: status.status, completionPercent: status.completionPercent };
 });
 /////////////
-//BuildCache
+//BuildFollowerCache
 ///////////////
-SVRP.SetHandler(IPCAPI.BuildCacheCall, async (c) => {
+SVRP.SetHandler(IPCAPI.BuildFollowerCacheCall, async (c) => {
     if (!g_twitterUser) {
-        console.log("Cant call BuildCacheCall when g_twitterUser is invalid");
+        console.log("Cant call BuildFollowerCache when g_twitterUser is invalid");
         return { success: false, error: SVRP.Error.Internal };
     }
-    g_twitterUser.GetFollowerCache().BuildFollowerCache().then((value) => {
+    g_twitterUser.GetFollowerCache().Build().then((value) => {
         console.log("build cache complete");
     });
     return { success: true };
 });
+/////////////
+//QueryFollowerCache
+///////////////
+SVRP.SetHandler(IPCAPI.QueryFollowerCacheCall, async (c) => {
+    if (!g_twitterUser) {
+        console.log("Cant call QueryFollowerCache when g_twitterUser is invalid");
+        return { success: false, followers: null, error: SVRP.Error.Internal };
+    }
+    let followers = await g_twitterUser.GetFollowerCache().Query(c.args.query);
+    return { success: true, followers: followers };
+});
+/////////////////////
+//Run Messaging Campaign
+//////////////////////////
+//only 1 campaign runs at a time
+let g_activeCampaign = null;
+SVRP.SetHandler(IPCAPI.RunMessagingCampaignCall, async (c) => {
+    if (!g_twitterUser) {
+        console.log("Cant call RunMessagingCampaign when g_twitterUser is invalid");
+        return { success: false, error: SVRP.Error.Internal };
+    }
+    if (g_activeCampaign) {
+        console.log("Cant call RunMessagingCampaign when another campaign is already running");
+        return { success: false, error: SVRP.Error.Internal };
+    }
+    //validate all the campaign fields that came across
+    let campaign = MessagingCampaign_1.MessagingCampaign.fromJSON(c.args.campaign);
+    if (!campaign) {
+        console.log("RunMessagingCampaign failed to validate campaign, rejecting");
+        return { success: false, error: SVRP.Error.Internal };
+    }
+    g_activeCampaign = new MessagingCampaign_1.MessagingCampaignManager(g_twitterUser, campaign);
+    try {
+        g_activeCampaign.Run().then(() => {
+            console.log(`Campaign "${campaign.campaign_id}" finished`);
+            g_activeCampaign = null;
+            ClientApi.NotifyMessageCampaignStopped();
+        });
+    }
+    catch (err) {
+        console.log(`Campaign "${campaign.campaign_id}" stopped unexpectedly with error:`);
+        console.error(err);
+        ClientApi.NotifyMessageCampaignStopped();
+    }
+    return { success: true };
+});
+//////////////////////
+//Login handler
+//////////////////////
 //when the renderer attempts a login, it includes the Twitter app api keys
 SVRP.SetHandler(IPCAPI.LoginCall, async (c) => {
     //verify that the app keys are valid before attempting to log the user in via oauth
@@ -147,7 +198,13 @@ SVRP.SetHandler(IPCAPI.LoginCall, async (c) => {
     }
     //now verify we can use these keys
     let user = new TwitterUser_1.TwitterUser();
-    let initOK = await user.Init(g_appAuth, g_userLogin);
+    let tryUserLogin = {
+        access_token_key: oauthResult.token,
+        access_token_secret: oauthResult.tokenSecret,
+        id_str: '',
+        screen_name: '' //not known yet
+    };
+    let initOK = await user.Init(g_appAuth, tryUserLogin);
     if (!initOK) {
         return { success: false, userLogin: null, error: SVRP.Error.Internal, errorMessage: "Unable to verify Twitter user credentials" };
     }

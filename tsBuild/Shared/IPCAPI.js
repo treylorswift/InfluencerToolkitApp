@@ -1,18 +1,32 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const SVRP = require("./SVRP");
+///////////////
+//Server Api
+//(calls the client can make to the server)
+//////////////
+//////////////////////
+//Get App Auth keys
+/////////////////////
 //returns whatever Twitter app API keys were last used to log a user in.
 //they are saved to disk after the first successful login and persist across app launches
-class GetAppAuth extends SVRP.Call {
+async function GetAppAuth() {
+    return new GetAppAuthCall().Call();
+}
+exports.GetAppAuth = GetAppAuth;
+class GetAppAuthCall extends SVRP.Call {
     constructor() {
         super(...arguments);
         this.method = "GetAppAuth";
     }
 }
-exports.GetAppAuth = GetAppAuth;
+exports.GetAppAuthCall = GetAppAuthCall;
 class GetAppAuthResponse extends SVRP.Response {
 }
 exports.GetAppAuthResponse = GetAppAuthResponse;
+//////////////////////
+//Get User login
+/////////////////////
 //returns info for the currently logged in user
 async function GetUserLogin() {
     return new GetUserLoginCall().Call();
@@ -74,21 +88,48 @@ exports.GetFollowerCacheStatusResponse = GetFollowerCacheStatusResponse;
 /////////////////////////////////////////
 //BuildCache
 //////////////////////////
-async function BuildCache(command) {
-    return new BuildCacheCall({ command: command }).Call();
+async function BuildFollowerCache(command) {
+    return new BuildFollowerCacheCall({ command: command }).Call();
 }
-exports.BuildCache = BuildCache;
-class BuildCacheCall extends SVRP.Call {
+exports.BuildFollowerCache = BuildFollowerCache;
+class BuildFollowerCacheCall extends SVRP.Call {
     constructor(args) {
         super();
-        this.method = "BuildCache";
+        this.method = "BuildFollowerCache";
         this.args = args;
     }
 }
-exports.BuildCacheCall = BuildCacheCall;
-var BuildCacheCommands;
-(function (BuildCacheCommands) {
-    BuildCacheCommands[BuildCacheCommands["Rebuild"] = 0] = "Rebuild";
-    BuildCacheCommands[BuildCacheCommands["Resume"] = 1] = "Resume";
-})(BuildCacheCommands = exports.BuildCacheCommands || (exports.BuildCacheCommands = {}));
+exports.BuildFollowerCacheCall = BuildFollowerCacheCall;
+var BuildFollowerCacheCommands;
+(function (BuildFollowerCacheCommands) {
+    BuildFollowerCacheCommands[BuildFollowerCacheCommands["Rebuild"] = 0] = "Rebuild";
+    BuildFollowerCacheCommands[BuildFollowerCacheCommands["Resume"] = 1] = "Resume";
+})(BuildFollowerCacheCommands = exports.BuildFollowerCacheCommands || (exports.BuildFollowerCacheCommands = {}));
+async function QueryFollowerCache(q) {
+    return new QueryFollowerCacheCall({ query: q }).Call();
+}
+exports.QueryFollowerCache = QueryFollowerCache;
+class QueryFollowerCacheCall extends SVRP.Call {
+    constructor(args) {
+        super();
+        this.method = "QueryFollowerCache";
+        this.args = args;
+    }
+}
+exports.QueryFollowerCacheCall = QueryFollowerCacheCall;
+class QueryFollowerCacheResponse extends SVRP.Response {
+}
+exports.QueryFollowerCacheResponse = QueryFollowerCacheResponse;
+async function RunMessagingCampaign(c) {
+    return new RunMessagingCampaignCall({ campaign: c }).Call();
+}
+exports.RunMessagingCampaign = RunMessagingCampaign;
+class RunMessagingCampaignCall extends SVRP.Call {
+    constructor(args) {
+        super();
+        this.method = "RunMessagingCampaign";
+        this.args = args;
+    }
+}
+exports.RunMessagingCampaignCall = RunMessagingCampaignCall;
 //# sourceMappingURL=IPCAPI.js.map
