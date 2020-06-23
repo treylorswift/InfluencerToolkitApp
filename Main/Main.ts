@@ -1,10 +1,13 @@
 import * as fs from 'fs';
-import * as TwitterAuth from '../Shared/TwitterAuth'
-import {TwitterUser} from './TwitterUser'
 import * as Twitter from 'twitter-lite'
+import {TwitterUser} from './TwitterUser'
 import * as TwitterFollowerDB from './TwitterFollowerDB'
 import {MessagingCampaignManager,MessagingCampaign} from './MessagingCampaign'
 import * as ClientApi from '../Shared/ClientApi'
+import {ElectronIPC} from '../Shared/ElectronIPC';
+import * as ServerApi from '../Shared/ServerApi'
+import * as TwitterAuth from '../Shared/TwitterAuth'
+import * as RPC from '../Shared/RPC';
 
 //once we obtain app auth and user auth keys, we won't require login
 let g_appAuth:TwitterAuth.AppAuth = null;
@@ -75,17 +78,14 @@ electronApp.commandLine.appendSwitch('auto-detect', 'false');
 electronApp.commandLine.appendSwitch('no-proxy-server')
 
 export let g_mainWindow:BrowserWindow = null;
-import {SVElectronIPC} from '../Shared/SVElectronIPC';
-import * as IPCAPI from '../Shared/IPCAPI'
-import * as SVRP from '../Shared/SVRP';
 
-//route all SVRP.Call/SetHandlers through SVElectronIPC
-SVRP.SetTransport(new SVElectronIPC());
+//route all RPC.Call/SetHandlers through ElectronIPC
+RPC.SetTransport(new ElectronIPC());
 
 /////////////////
 //GetAppAuth - returns Twitter App API keys
 ////////////////
-SVRP.SetHandler(IPCAPI.GetAppAuthCall, async (json:IPCAPI.GetAppAuthCall):Promise<IPCAPI.GetAppAuthResponse> =>
+RPC.SetHandler(ServerApi.GetAppAuthCall, async (json:ServerApi.GetAppAuthCall):Promise<ServerApi.GetAppAuthResponse> =>
 {
     return {success:true, appAuth:g_appAuth};
 });
@@ -93,7 +93,7 @@ SVRP.SetHandler(IPCAPI.GetAppAuthCall, async (json:IPCAPI.GetAppAuthCall):Promis
 ////////////////
 //GetUserLogin - returns Twitter user API keys, twitter id_str and screen_name (obtained via oauth and verify_credentials api call)
 //////////////
-SVRP.SetHandler(IPCAPI.GetUserLoginCall, async (json:IPCAPI.GetUserLoginCall):Promise<IPCAPI.GetUserLoginResponse> =>
+RPC.SetHandler(ServerApi.GetUserLoginCall, async (json:ServerApi.GetUserLoginCall):Promise<ServerApi.GetUserLoginResponse> =>
 {
     return {success:true, userLogin:g_userLogin};
 });
@@ -101,12 +101,12 @@ SVRP.SetHandler(IPCAPI.GetUserLoginCall, async (json:IPCAPI.GetUserLoginCall):Pr
 /////////////////////////
 //GetFollowerCacheStatus
 ////////////////
-SVRP.SetHandler(IPCAPI.GetFollowerCacheStatusCall, async (json:IPCAPI.GetFollowerCacheStatusCall):Promise<IPCAPI.GetFollowerCacheStatusResponse> =>
+RPC.SetHandler(ServerApi.GetFollowerCacheStatusCall, async (json:ServerApi.GetFollowerCacheStatusCall):Promise<ServerApi.GetFollowerCacheStatusResponse> =>
 {
     if (!g_twitterUser)
     {
         console.log("Cant call GetFollowerCacheStatus when g_twitterUser is invalid");
-        return {success:false, status:IPCAPI.FollowerCacheStatusEnum.None, completionPercent:0, error:SVRP.Error.Internal};
+        return {success:false, status:ServerApi.FollowerCacheStatusEnum.None, completionPercent:0, error:RPC.Error.Internal};
     }
 
     let status = g_twitterUser.GetFollowerCache().GetStatus();
@@ -117,12 +117,12 @@ SVRP.SetHandler(IPCAPI.GetFollowerCacheStatusCall, async (json:IPCAPI.GetFollowe
 /////////////
 //BuildFollowerCache
 ///////////////
-SVRP.SetHandler(IPCAPI.BuildFollowerCacheCall, async (c:IPCAPI.BuildFollowerCacheCall):Promise<SVRP.Response> =>
+RPC.SetHandler(ServerApi.BuildFollowerCacheCall, async (c:ServerApi.BuildFollowerCacheCall):Promise<RPC.Response> =>
 {
     if (!g_twitterUser)
     {
         console.log("Cant call BuildFollowerCache when g_twitterUser is invalid");
-        return {success:false,error:SVRP.Error.Internal};
+        return {success:false,error:RPC.Error.Internal};
     }
 
     g_twitterUser.GetFollowerCache().Build().then( (value:boolean) =>
@@ -137,12 +137,12 @@ SVRP.SetHandler(IPCAPI.BuildFollowerCacheCall, async (c:IPCAPI.BuildFollowerCach
 /////////////
 //QueryFollowerCache
 ///////////////
-SVRP.SetHandler(IPCAPI.QueryFollowerCacheCall, async (c:IPCAPI.QueryFollowerCacheCall):Promise<IPCAPI.QueryFollowerCacheResponse> =>
+RPC.SetHandler(ServerApi.QueryFollowerCacheCall, async (c:ServerApi.QueryFollowerCacheCall):Promise<ServerApi.QueryFollowerCacheResponse> =>
 {
     if (!g_twitterUser)
     {
         console.log("Cant call QueryFollowerCache when g_twitterUser is invalid");
-        return {success:false, followers:null, error:SVRP.Error.Internal};
+        return {success:false, followers:null, error:RPC.Error.Internal};
     }
 
     let followers = await g_twitterUser.GetFollowerCache().Query(c.args.query);
@@ -155,17 +155,17 @@ SVRP.SetHandler(IPCAPI.QueryFollowerCacheCall, async (c:IPCAPI.QueryFollowerCach
 //only 1 campaign runs at a time
 let g_activeCampaign:MessagingCampaignManager = null;
 
-SVRP.SetHandler(IPCAPI.RunMessagingCampaignCall, async (c:IPCAPI.RunMessagingCampaignCall):Promise<SVRP.Response> =>
+RPC.SetHandler(ServerApi.RunMessagingCampaignCall, async (c:ServerApi.RunMessagingCampaignCall):Promise<RPC.Response> =>
 {
     if (!g_twitterUser)
     {
         console.log("Cant call RunMessagingCampaign when g_twitterUser is invalid");
-        return {success:false, error:SVRP.Error.Internal};
+        return {success:false, error:RPC.Error.Internal};
     }
     if (g_activeCampaign)
     {
         console.log("Cant call RunMessagingCampaign when another campaign is already running");
-        return {success:false, error:SVRP.Error.Internal};
+        return {success:false, error:RPC.Error.Internal};
     }
 
     //validate all the campaign fields that came across
@@ -173,7 +173,7 @@ SVRP.SetHandler(IPCAPI.RunMessagingCampaignCall, async (c:IPCAPI.RunMessagingCam
     if (!campaign)
     {
         console.log("RunMessagingCampaign failed to validate campaign, rejecting");
-        return {success:false, error:SVRP.Error.Internal};
+        return {success:false, error:RPC.Error.Internal};
     }
 
     g_activeCampaign = new MessagingCampaignManager(g_twitterUser, campaign);
@@ -200,7 +200,7 @@ SVRP.SetHandler(IPCAPI.RunMessagingCampaignCall, async (c:IPCAPI.RunMessagingCam
 //Login handler
 //////////////////////
 //when the renderer attempts a login, it includes the Twitter app api keys
-SVRP.SetHandler(IPCAPI.LoginCall, async (c:IPCAPI.LoginCall):Promise<IPCAPI.LoginResponse> =>
+RPC.SetHandler(ServerApi.LoginCall, async (c:ServerApi.LoginCall):Promise<ServerApi.LoginResponse> =>
 {
     //verify that the app keys are valid before attempting to log the user in via oauth
     try
@@ -219,7 +219,7 @@ SVRP.SetHandler(IPCAPI.LoginCall, async (c:IPCAPI.LoginCall):Promise<IPCAPI.Logi
         let msg = "Unable to authenticate Twitter app API keys";
         console.log(msg);
         console.error(err);
-        return {success:false, userLogin:null, error:SVRP.Error.InvalidParams,errorMessage:msg};
+        return {success:false, userLogin:null, error:RPC.Error.InvalidParams,errorMessage:msg};
     }
 
     //no error means the keys were valid
@@ -234,7 +234,7 @@ SVRP.SetHandler(IPCAPI.LoginCall, async (c:IPCAPI.LoginCall):Promise<IPCAPI.Logi
         let msg="Error saving Twitter api API keys to disk";
         console.log(msg);
         console.error(err);
-        return {success:false, userLogin:null, error:SVRP.Error.Internal, errorMessage:msg};
+        return {success:false, userLogin:null, error:RPC.Error.Internal, errorMessage:msg};
     }
 
     //now attempt oauth login in separate window
@@ -264,7 +264,7 @@ SVRP.SetHandler(IPCAPI.LoginCall, async (c:IPCAPI.LoginCall):Promise<IPCAPI.Logi
 
     if (!oauthResult)
     {
-        return {success:false, userLogin:null, error:SVRP.Error.Internal,errorMessage:"Twitter Login Failed"};
+        return {success:false, userLogin:null, error:RPC.Error.Internal,errorMessage:"Twitter Login Failed"};
     }
 
     //now verify we can use these keys
@@ -279,7 +279,7 @@ SVRP.SetHandler(IPCAPI.LoginCall, async (c:IPCAPI.LoginCall):Promise<IPCAPI.Logi
     let initOK = await user.Init(g_appAuth,tryUserLogin);
     if (!initOK)
     {
-        return {success:false, userLogin:null, error:SVRP.Error.Internal, errorMessage:"Unable to verify Twitter user credentials"};
+        return {success:false, userLogin:null, error:RPC.Error.Internal, errorMessage:"Unable to verify Twitter user credentials"};
     }
 
     try
@@ -305,7 +305,7 @@ SVRP.SetHandler(IPCAPI.LoginCall, async (c:IPCAPI.LoginCall):Promise<IPCAPI.Logi
         let msg="Error saving Twitter user login to disk";
         console.log(msg);
         console.error(err);
-        return {success:false, userLogin:null, error:SVRP.Error.Internal, errorMessage:msg};
+        return {success:false, userLogin:null, error:RPC.Error.Internal, errorMessage:msg};
     }
 });
 
