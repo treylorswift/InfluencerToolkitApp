@@ -129,14 +129,8 @@ export class QueryComponent extends DOMComponent
         this.resultsDiv.innerHTML = html;
     }
 
-    RunCampaign = async () =>
+    ConvertUIStateToCampaign():ServerApi.MessagingCampaign
     {
-        if (this.campaignRunning)
-        {
-            this.DisplayModalMessage("Sending in progress, please wait for it to finish.");
-            return;
-        }
-
         var sort = this.sortElement.value as ServerApi.MessagingCampaignSortType;
         let tags = this.tagsElement.value.split(' ');
         let count = this.GetSendCount();
@@ -155,6 +149,21 @@ export class QueryComponent extends DOMComponent
             }
         }
 
+        return campaign;
+    }
+
+
+
+    RunCampaign = async () =>
+    {
+        if (this.campaignRunning)
+        {
+            this.DisplayModalMessage("Sending in progress, please wait for it to finish.");
+            return;
+        }
+
+        let campaign = this.ConvertUIStateToCampaign();
+
         this.campaignRunning = true;
         this.sendButton.disabled = true;
 
@@ -165,21 +174,6 @@ export class QueryComponent extends DOMComponent
             this.campaignRunning = false;
             return;
         }
-    }
-
-    ToggleContacted = ()=>
-    {
-        if (this.contactedVisible)
-        {
-            this.contactedVisible = false;
-            this.toggleContactedButton.innerHTML = "Show Contacted"
-        }
-        else
-        {
-            this.contactedVisible = true;
-            this.toggleContactedButton.innerHTML = "Hide Contacted"
-        }
-        this.RunQuery();
     }
 
     //returns null if the send count field is empty/blank
@@ -206,6 +200,7 @@ export class QueryComponent extends DOMComponent
         {
             this.DisplayModalMessage('<center>With "Sandbox" unchecked, clicking "Send Messages" will send real direct messages.<br/><br/>Be careful!</center>');
         }
+        this.SaveUIStateToLocalStorage();
         this.RunQuery();
     }
 
@@ -222,6 +217,88 @@ export class QueryComponent extends DOMComponent
         }
         else
             this.sendButton.innerHTML = `Send To All Followers`;
+
+        this.SaveUIStateToLocalStorage();
+    }
+
+    SortChanged = ()=>
+    {
+        this.SaveUIStateToLocalStorage();
+        this.RunQuery();
+    }
+
+    TagsChanged = ()=>
+    {
+        this.SaveUIStateToLocalStorage();
+        this.RunQuery();
+    }
+
+    UpdateContactedButton(showContacted:boolean)
+    {
+        if (showContacted)
+        {
+            this.toggleContactedButton.innerHTML = "Show Contacted"
+        }
+        else
+        {
+            this.toggleContactedButton.innerHTML = "Hide Contacted"
+        }
+    }
+
+    ToggleContacted = ()=>
+    {
+        this.contactedVisible = !this.contactedVisible;
+        this.UpdateContactedButton(this.contactedVisible);
+        this.RunQuery();
+        this.SaveUIStateToLocalStorage();
+    }
+
+    SaveUIStateToLocalStorage()
+    {
+        let uiState =
+        {
+            message:this.messageElement.value,
+            sort:this.sortElement.value,
+            sandbox:this.sandboxCheckbox.checked,
+            sendLimit:this.sendLimit.value,
+            tags:this.tagsElement.value,
+            showContacted:this.contactedVisible
+        }
+
+        localStorage.setItem('uiState',JSON.stringify(uiState));
+    }
+
+    LoadUIStateFromLocalStorage()
+    {
+        try
+        {
+            let c = JSON.parse(localStorage.getItem('uiState'));
+
+            try { this.messageElement.value = c.message; } catch (err) {}
+            try { this.sortElement.value = c.sort; } catch (err) {}
+            try { this.sandboxCheckbox.checked = c.sandbox; } catch (err) {}
+            try { this.sendLimit.value = c.sendLimit; } catch (err) {}
+            try { this.tagsElement.value = c.tags; } catch (err) {}
+            try { this.contactedVisible = c.showContacted; } catch (err) {}
+
+            this.UpdateContactedButton(this.contactedVisible);
+        }
+        catch (err)
+        {
+            console.log("LoadUIStateFromLocalStorage error:");
+            console.error(err);
+
+            //init ui
+            this.messageElement.value = this.GetDefaultMessage();
+            this.sortElement.value = 'influence';
+            this.sandboxCheckbox.checked = true;
+            this.sendLimit.value = '';
+            this.tagsElement.value = '';
+            this.contactedVisible = false;
+            this.UpdateContactedButton(this.contactedVisible);
+        }
+
+        this.RunQuery();
     }
 
     SetVisible(visible:boolean)
@@ -232,18 +309,21 @@ export class QueryComponent extends DOMComponent
             this.containerElement.style.display = 'none';
     }
 
-    async Render(em:HTMLElement)
+    GetDefaultMessage():string
     {
-        let defaultMessage =
-            `Hey there, are you interested in receiving my newsletter?
+        return `Hey there, are you interested in receiving my newsletter?
 
 You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.screen_name}`;
+    }
 
+    async Render(em:HTMLElement)
+    {
+    
         let html = 
            `<div>
                 Compose a message to your followers:<br/>
                 <div style="display:flex; align-items:center">
-                    <textarea id="message" class="messageTextArea" type="text">${defaultMessage}</textarea>
+                    <textarea id="message" spellcheck="false" class="messageTextArea" type="text">${this.GetDefaultMessage()}</textarea>
                 </div>
                 <br/>
                 <div style="display:flex; justify-content:flex-start; align-items:flex-end">
@@ -256,7 +336,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                     </div>
                     <div style="margin-left:16px">
                         <div>Filter</div>
-                        <input id="tags" style="width:260px" type="text" placeholder="Twitter bio tags eg. health love dad">
+                        <input id="tags" spellcheck="false" style="width:260px" type="text" placeholder="Twitter bio tags eg. health love dad">
                     </div>
                     <div style="margin-left:16px">
                         <div>Send Limit</div>
@@ -290,15 +370,14 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
 
         this.resultsDiv = em.querySelector('#results');
 
-        this.MapEvent(em, "sortSelect", "change", this.RunQuery);
-        this.MapEvent(em, "tags", "input", this.RunQuery);
+        this.MapEvent(em, "sortSelect", "change", this.SortChanged);
+        this.MapEvent(em, "tags", "input", this.TagsChanged);
         this.MapEvent(em, "sendLimit", "input", this.SendLimitChanged);
-        this.MapEvent(em, "sendButton", "click", this.RunCampaign);
         this.MapEvent(em, "sandboxCheckbox", "change", this.SandboxCheckboxChanged);
         this.MapEvent(em, 'toggleContactedButton', 'click',this.ToggleContacted);
+        this.MapEvent(em, "sendButton", "click", this.RunCampaign);
 
-
-        this.RunQuery();
+        this.LoadUIStateFromLocalStorage();
 
         /////////////////
         //sign up to handle message campaign stuff

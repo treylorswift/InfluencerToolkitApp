@@ -323,8 +323,8 @@ function createWindow()
 
     g_mainWindow = mainWindow;
 
-    //Menu.setApplicationMenu(null);
-
+    Menu.setApplicationMenu(null);
+    
     // and load the index.html of the app.
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
     
@@ -358,6 +358,11 @@ electronApp.on('window-all-closed', function () {
 
 async function main()
 {
+    //to blow away local storage...
+    //doesnt seem to work actually, gets EPERM exception
+    //const getAppPath = path.join(electronApp.getPath('appData'), "Electron");
+    //fs.unlinkSync(getAppPath);
+    
     //before we start, check to see if we have valid app auth and user auth keys already.
     //if so, we won't need to ask the user for them
 

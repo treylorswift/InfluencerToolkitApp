@@ -241,7 +241,7 @@ function createWindow() {
         }
     });
     exports.g_mainWindow = mainWindow;
-    //Menu.setApplicationMenu(null);
+    electron_2.Menu.setApplicationMenu(null);
     // and load the index.html of the app.
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
     //navigating seems to alter the window title.. can we please just keep it the way it should be? kthx
@@ -267,6 +267,10 @@ electron_1.app.on('window-all-closed', function () {
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
 async function main() {
+    //to blow away local storage...
+    //doesnt seem to work actually, gets EPERM exception
+    //const getAppPath = path.join(electronApp.getPath('appData'), "Electron");
+    //fs.unlinkSync(getAppPath);
     //before we start, check to see if we have valid app auth and user auth keys already.
     //if so, we won't need to ask the user for them
     await ValidateAppAndUserAuth();
