@@ -51,7 +51,7 @@ class TwitterDB
             //but since we are only incrementally replicating parts of their DB, it's possible people could
             //change screen names and our db would not be aware of it until some later time.. the main
             //unique id that will never change is id_str. so that is the only field marked UNIQUE in the table
-            let createUsers = this.db.prepare(`
+            this.db.prepare(`
                 CREATE TABLE IF NOT EXISTS TwitterUsers (
                     id_str TEXT NOT NULL UNIQUE PRIMARY KEY,
                     screen_name TEXT NOT NULL,
@@ -63,18 +63,14 @@ class TwitterDB
                     description TEXT NOT NULL,
                     profile_image_url_https TEXT
                 );
-            `);
-
-            createUsers.run();
+            `).run();
 
             //create an index on the followers_count so they will sort by followers quickly
-            let createFollowersCountIndex = this.db.prepare(`
+            this.db.prepare(`
                 CREATE INDEX IF NOT EXISTS TwitterFollowersCountIndex ON TwitterUsers (
 	                "followers_count"
                 );
-            `);
-
-            createFollowersCountIndex.run();
+            `).run();
 
             //tags just establishes which tags are present in
             //which users bio. the description/bio field in the TwitterUser table is checked for changes
@@ -84,31 +80,27 @@ class TwitterDB
             //
             //the unique constraint ensures we dont store the same tag more than once for the same user
             //(if a user has the same word in their bio in multiple places for example)
-            let createTags = this.db.prepare(`
+            this.db.prepare(`
                 CREATE TABLE IF NOT EXISTS TwitterTags (
                     tag TEXT NOT NULL COLLATE NOCASE,
                     id_str TEXT NOT NULL,
                     UNIQUE(tag,id_str) ON CONFLICT IGNORE
                 );
-            `);
-
-            createTags.run();
+            `).run();
 
             //create an index on the tags 'tag' column so they can be matched quickly
-            let createTagIndex = this.db.prepare(`
+            this.db.prepare(`
                 CREATE INDEX IF NOT EXISTS TwitterTag_tag_Index ON TwitterTags (
             	    "tag"
                 );
-            `);
-            createTagIndex.run();
+            `).run();
 
             //create an index on the tags 'id_str' column so they can be matched quickly
-            let createTagIdIndex = this.db.prepare(`
+            this.db.prepare(`
                 CREATE INDEX IF NOT EXISTS TwitterTag_id_str_Index ON TwitterTags (
             	    "id_str"
                 );
-            `);
-            createTagIdIndex.run();
+            `).run();
 
             //establishes who follows who
             //id_str is the one who follows id_str_followee
@@ -126,17 +118,28 @@ class TwitterDB
 
             //the unique constraint ensures we wont accidently create duplicate rows that store
             //the same follower-followee relationship more than once
-            let createFollowers = this.db.prepare(`
+            this.db.prepare(`
                 CREATE TABLE IF NOT EXISTS TwitterFollowers (
                     id_str TEXT NOT NULL,
                     id_str_followee TEXT NOT NULL,
                     age INTEGER,
                     UNIQUE(id_str,id_str_followee) ON CONFLICT IGNORE
                 );
-            `);
+            `).run();
 
-            createFollowers.run();
+            //create an index on the followers 'id_str' column so they can be matched quickly
+            this.db.prepare(`
+                CREATE INDEX IF NOT EXISTS TwitterFollowers_id_str_Index ON TwitterFollowers (
+                    "id_str"
+                );
+            `).run();
 
+            //create an index on the followers 'id_str' column so they can be matched quickly
+            this.db.prepare(`
+                CREATE INDEX IF NOT EXISTS TwitterFollowers_id_str_followee_Index ON TwitterFollowers (
+                    "id_str_followee"
+                );
+            `).run();
 
             //we keep track of which users we have built up follower info for
             //As we are building up the db we keep track of our progress (so that we can recover where we left off)
@@ -153,36 +156,30 @@ class TwitterDB
                     start_time INTEGER DEFAULT -1,
                     finish_time INTEGER DEFAULT -1
                 );
-            `);
+            `).run();
             
-            createFollowerTasks.run();
-
             //establishes who has been contacted by which campaign(s)
             //the 'date' is the time when the user was contacted, and
             //being an integer, equates to javascript Date().getTime()
-            let createMessageHistory = this.db.prepare(`
+            this.db.prepare(`
                 CREATE TABLE IF NOT EXISTS TwitterMessageHistory (
                     campaign_id TEXT NOT NULL,
                     id_str TEXT NOT NULL,
                     date INTEGER
                 );
-            `);
-
-            createMessageHistory.run();
+            `).run();
 
             //the dry run message history is the same as the normal
             //message history but it is stored separately so that
             //the two histories dont conflict with each other when
             //testing dry runs and subsequently doing live runs
-            let createDryRunMessageHistory = this.db.prepare(`
+            this.db.prepare(`
                 CREATE TABLE IF NOT EXISTS TwitterDryRunMessageHistory (
                     campaign_id TEXT NOT NULL,
                     id_str TEXT NOT NULL,
                     date INTEGER
                 );
-            `);
-
-            createDryRunMessageHistory.run();
+            `).run();
 
         }
         catch (err)
@@ -203,9 +200,10 @@ type FollowerTaskProgress = {cursor:string, completionPercent:number, startTime:
 export type FollowerCacheStatus =
 {
     status:FollowerCacheStatusEnum,
-    completionPercent:number
+    completionPercent:number,
+    //only valid when status===Complete
+    totalStoredFollowers:number 
 }
-
 
 //this class manages the process of actually downloading the followers as well
 //as querying that data later. it calls lots of abstract methods which implement
@@ -223,8 +221,8 @@ export abstract class TwitterFollowerCacheBase
     //@ts-ignore
     async Init(twitter:Twitter, screen_name:string):Promise<boolean>
     {
-        console.log('TwitterFollowerCache forcing screen_name to balajis');
-        screen_name = 'willrahn'
+        //console.log('TwitterFollowerCache forcing screen_name to balajis');
+        //screen_name = 'balajis'
         try
         {
             //first get the profile to determine the expected follower count
@@ -253,18 +251,23 @@ export abstract class TwitterFollowerCacheBase
 
         //no record of any cache operation.. must have never done one. so none exists
         if (!p)
-            return {status:FollowerCacheStatusEnum.None, completionPercent:0};
+            return {status:FollowerCacheStatusEnum.None, completionPercent:0, totalStoredFollowers:0};
+        
+        let totalStoredFollowers = this.GetNumStoredFollowers();
 
         //if we're actively caching now, say so.. include completion percent
         if (this.buildInProgress)
-            return {status:FollowerCacheStatusEnum.InProgress, completionPercent:p.completionPercent};
-        
+        {
+            return {status:FollowerCacheStatusEnum.InProgress, completionPercent:p.completionPercent, totalStoredFollowers:totalStoredFollowers};
+        }
+
+        //we're not in progress..
         //there's a record but its not finished. Incomplete
         if (!p.finishTime)
-            return {status:FollowerCacheStatusEnum.Incomplete, completionPercent:p.completionPercent}
+            return {status:FollowerCacheStatusEnum.Incomplete, completionPercent:p.completionPercent, totalStoredFollowers:totalStoredFollowers}
         
         //there is a record, it shows complete. 
-        return {status:FollowerCacheStatusEnum.Complete, completionPercent:p.completionPercent};
+        return {status:FollowerCacheStatusEnum.Complete, completionPercent:p.completionPercent, totalStoredFollowers:totalStoredFollowers};
     }
 
    

@@ -1,13 +1,21 @@
 import * as ServerApi from "../Shared/ServerApi.js"
 import { DOMComponent } from "./DOMComponent.js"
 import { ProgressComponent } from './ProgressComponent.js'
+import { HomePage } from './HomePage.js'
 
 //displays status of the follower cache, also displays buttons which can be used to trigger download / resume / re-download of followers
-class CacheStatusComponent extends DOMComponent
+export class FollowerCacheComponent extends DOMComponent
 {
     progressComponent:ProgressComponent = null;
     destElement:HTMLElement = null;
     progressInterval:any = null;
+    parent:HomePage = null;
+
+    constructor(parent:HomePage)
+    {
+        super(parent);
+        this.parent = parent;
+    }
 
     MonitorProgress()
     {
@@ -35,6 +43,15 @@ class CacheStatusComponent extends DOMComponent
 
                         //refresh the status displayed
                         this.UpdateStatusUI();
+
+                        if (statusResult.status===ServerApi.FollowerCacheStatusEnum.Complete)
+                        {
+                            //make sure its visible
+                            this.parent.queryComponent.SetVisible(true);
+
+                            //if complete, run a query
+                            this.parent.queryComponent.RunQuery();
+                        }
                     }
                 }
             }
@@ -128,7 +145,7 @@ class CacheStatusComponent extends DOMComponent
 
         if (cacheStatusResponse.status===ServerApi.FollowerCacheStatusEnum.None)
         {
-            html += `Let's get started and retreive your followers from Twitter. <button id="rebuildCache">Retreive Follower List</button>`
+            html += `Let's get started and retreive your followers from Twitter. <button id="rebuildCache">Download Followers</button>`
             rebuildShown = true;
         }
         else
@@ -140,7 +157,9 @@ class CacheStatusComponent extends DOMComponent
         else
         if (cacheStatusResponse.status===ServerApi.FollowerCacheStatusEnum.Complete)
         {
-            html += `Followers download complete. <button id="rebuildCache">Refresh Downloaded Followers</button>`
+            html += `${cacheStatusResponse.totalStoredFollowers} followers <button id="rebuildCache">Refresh Followers</button>`
+            //make sure query ui gets displayed
+
             rebuildShown = true;
         }
         else

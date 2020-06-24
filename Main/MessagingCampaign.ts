@@ -208,6 +208,10 @@ export class MessagingCampaignManager
 
                     let response = await this.twitter.post('direct_messages/events/new', params);
                 }
+                else
+                {
+                    await DelayMilliseconds(500);//simulate a send delay
+                }
 
                 //no response error means the send succeeded, add to the history and save it
                 var curDate = new Date();

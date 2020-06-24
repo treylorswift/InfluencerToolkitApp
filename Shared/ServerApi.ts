@@ -113,6 +113,8 @@ export class GetFollowerCacheStatusResponse extends RPC.Response
     //if status===Partial, will be somewhere between 0-99
     //if status==Complete, will be 100
     completionPercent:number
+
+    totalStoredFollowers:number
 }
 
 /////////////////////////////////////////

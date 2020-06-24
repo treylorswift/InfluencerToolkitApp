@@ -106,12 +106,12 @@ RPC.SetHandler(ServerApi.GetFollowerCacheStatusCall, async (json:ServerApi.GetFo
     if (!g_twitterUser)
     {
         console.log("Cant call GetFollowerCacheStatus when g_twitterUser is invalid");
-        return {success:false, status:ServerApi.FollowerCacheStatusEnum.None, completionPercent:0, error:RPC.Error.Internal};
+        return {success:false, status:ServerApi.FollowerCacheStatusEnum.None, completionPercent:0, totalStoredFollowers:0, error:RPC.Error.Internal};
     }
 
     let status = g_twitterUser.GetFollowerCache().GetStatus();
     
-    return {success:true, status:status.status, completionPercent:status.completionPercent}
+    return {success:true, status:status.status, completionPercent:status.completionPercent, totalStoredFollowers:status.totalStoredFollowers}
 });
 
 /////////////
@@ -324,26 +324,24 @@ function createWindow()
 
     g_mainWindow = mainWindow;
 
-    //  Menu.setApplicationMenu(null);
-
-    //why was this in index.html originally?
-//    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
-//    <meta http-equiv="X-Content-Security-Policy" content="default-src 'self'; script-src 'self'">
+    //Menu.setApplicationMenu(null);
 
     // and load the index.html of the app.
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
-    //mainWindow.loadURL('http://localhost:3000');
-
+    
     //navigating seems to alter the window title.. can we please just keep it the way it should be? kthx
     mainWindow.webContents.on('page-title-updated',() => {
         mainWindow.setTitle(electronApp.getName());
     });
 
+    //this is used to route <a href="<link>" target="_blank"> so that they open in
+    //the users default browser (rather than inside electron itself)
     mainWindow.webContents.on('new-window', function(e, url) {
         e.preventDefault();
         require('electron').shell.openExternal(url);
     });
-    // Open the DevTools.
+
+    // open dev tools
     // mainWindow.webContents.openDevTools()
 }
 

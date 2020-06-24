@@ -5,7 +5,6 @@ export class LoginPage extends DOMComponent
 {
     ckey:HTMLInputElement = null;
     csec:HTMLInputElement = null;
-    rememberMe:HTMLInputElement = null;
 
     Login = async ()=>
     {
@@ -16,7 +15,7 @@ export class LoginPage extends DOMComponent
                 consumer_key: this.ckey.value,
                 consumer_secret: this.csec.value
             },
-            saveUserAuth:this.rememberMe.checked
+            saveUserAuth:true
         };
         
 
@@ -35,7 +34,7 @@ export class LoginPage extends DOMComponent
 
     async Render(em:Element)
     {
-        let link = "https://apps.twitter.com";
+        let link = "https://developer.twitter.com/apps";
         var html = 
            `<br/>
             <div style="position:fixed; left:0; top:0; width:100vw; height:100vh; display:flex">
@@ -43,14 +42,14 @@ export class LoginPage extends DOMComponent
                 <div style="display:flex; justify-content:center">
                     <div style="display:inline; width:320px;"><img style="width:100%;height:auto" src="logo.png"></div>
                 </div>
-                <br/>
                 <div style="display:flex; justify-content:center">
                 <div style="text-align:center">
-                    To login, you will need to provide Twitter App API keys.<br /><br/>You can obtain keys from <a href="${link}" target="_blank">${link}</a></br /><br/>
+                    "All your followers at your fingertips."<br/><br/><br/>
+                    To sign in, you will need to provide Twitter App API keys.<br /><br/>You can obtain keys from <a href="${link}" target="_blank">${link}</a>.<br /><Br/>
+                    Click "Create an App" and paste the "Consumer API keys" below.</br /><br/><br/>
                     <div style="display:inline-block; width:130px; text-align:right">Consumer Key</div>  <input type="text" style="width:300px" id="consumer_key" ><br /><br/>
                     <div style="display:inline-block; width:130px; text-align:right">Consumer Secret</div> <input type="text" style="width:300px" id="consumer_secret" ><br /><br/>
-                    <button id="login">Login with Twitter</button><br/>
-                    <input id="rememberMe" type="checkbox">Remember Me
+                    <Br /><button id="login">Sign in with Twitter</button>
                 </div>
                 </div>
             </div>
@@ -61,7 +60,6 @@ export class LoginPage extends DOMComponent
         this.MapEvent(em,"login","click",this.Login);
         this.ckey = em.querySelector('#consumer_key');
         this.csec = em.querySelector('#consumer_secret');
-        this.rememberMe = em.querySelector('#rememberMe');
 
         //grab the current Twitter app API keys (if they have been saved to disk.. would be there if any
         //previous login worked, or partially worked with good app keys but perhaps a bad user password)

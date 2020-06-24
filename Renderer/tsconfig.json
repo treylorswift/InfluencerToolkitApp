@@ -12,7 +12,7 @@
         "HomePage.ts",
         "ProgressComponent.ts",
         "QueryComponent.ts",
-        "CacheStatusComponent.ts",
+        "FollowerCacheComponent.ts",
         "DOMComponent.ts",
         "DOMSite.ts",
         "../Shared/RPC.ts",

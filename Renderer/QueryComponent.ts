@@ -8,14 +8,16 @@ import { HomePage } from "./HomePage.js"
 //only support a single / default messaging campaign from this UI currently
 let g_campaignId = 'default'
 
-class QueryComponent extends DOMComponent
+export class QueryComponent extends DOMComponent
 {
+    containerElement:HTMLElement = null;
     resultsDiv:HTMLElement = null;
     sortElement:HTMLInputElement = null;
     tagsElement:HTMLInputElement = null;
     messageElement:HTMLInputElement = null;
     sendButton:HTMLElement = null;
     sendLimit:HTMLInputElement = null;
+    dryRunCheckbox:HTMLInputElement = null;
 
     //if they update the query ui before a previous query has finished, we wait
     //for the previous query to finish.
@@ -25,8 +27,8 @@ class QueryComponent extends DOMComponent
     deferredQuery:ServerApi.FollowerCacheQuery = null;
     parent:HomePage = null;
 
-    //by default we will show all followers including ones weve contacted
-    contactedVisible:boolean = true;
+    //by default we show only followers who we haven't contacted
+    contactedVisible:boolean = false;
     toggleContactedButton:HTMLElement = null;
 
     campaignRunning:boolean = false;
@@ -131,7 +133,7 @@ class QueryComponent extends DOMComponent
     {
         if (this.campaignRunning)
         {
-            alert("Messaging campaign already running, please wait for it to finish");
+            alert("Sending in progress, please wait for it to finish");
             return;
         }
 
@@ -197,13 +199,35 @@ class QueryComponent extends DOMComponent
         }
     }
 
+    DryRunCheckboxChanged = () =>
+    {
+        if (!this.dryRunCheckbox.checked)
+        {
+            alert('With "Sandbox" unchecked, clicking "Send Messages" will send real direct messages. Be careful!');
+        }
+    }
+
     SendLimitChanged = () =>
     {
         let count = this.GetSendCount();
         if (count!==null)
-            this.sendButton.innerHTML = `Send To ${count} Followers`;
+        {
+            let msg = `Send To ${count} Follower`;
+            if (count>1)
+                msg += 's';
+
+            this.sendButton.innerHTML = msg;
+        }
         else
             this.sendButton.innerHTML = `Send To All Followers`;
+    }
+
+    SetVisible(visible:boolean)
+    {
+        if (visible)
+            this.containerElement.style.display = 'block';
+        else
+            this.containerElement.style.display = 'none';
     }
 
     async Render(em:HTMLElement)
@@ -220,7 +244,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                     <textarea id="message" style="padding-left:4px; resize:none; width:100%; height:60px;" type="text">${defaultMessage}</textarea>
                 </div>
                 <br/>
-                <div style="display:flex; justify-content:space-between">
+                <div style="display:flex; justify-content:flex-start; align-items:flex-end">
                     <div>
                         <div>Sort</div>
                         <select id="sortSelect">
@@ -228,15 +252,15 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                             <option value="recent">Recently Followed</option>
                         </select>
                     </div>
-                    <div style="margin-left:12px">
+                    <div style="margin-left:16px">
                         <div>Filter</div>
                         <input id="tags" style="width:260px" type="text" placeholder="Twitter bio tags eg. health love dad">
                     </div>
-                    <div style="margin-left:12px">
+                    <div style="margin-left:16px">
                         <div>Send Limit</div>
-                        <input id="sendLimit" style="width:40px; margin-right:8px" type="text" placeholder="">
+                        <input id="sendLimit" style="width:40px; margin-right:8px" type="text" placeholder="" value="1">
                     </div>
-                    <div style="margin-left: 12px; align-self:stretch"><button style="height:100%" id="sendButton">Send To All Followers</button></div>
+                    <div style="margin-left: 16px; flex-grow:1"><input style="margin-left:0" id="dryRunCheckbox" type="checkbox" checked>Sandbox<br/><button id="sendButton" style="width:100%">Send To 1 Follower</button></div>
                 </div>
                 <br/>
 
@@ -247,14 +271,17 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                 <div class="followerScreenName">Twitter Handle</div>
                 <div class="followerFollowersCount">Followers</div>
                 <div class="followerContacted">Contacted</div>
-                <div style="margin-left:auto; padding-right:4px; width:130px; text-align:right"><button id="toggleContactedButton">Hide Contacted</button></div>
+                <div style="margin-left:auto; padding-right:4px; width:130px; text-align:right"><button id="toggleContactedButton">Show Contacted</button></div>
             </div>
             <div id="results"></div>
         `;
         em.innerHTML = html;
+        this.containerElement = em;
         this.sortElement = em.querySelector('#sortSelect');
         this.tagsElement = em.querySelector('#tags');
         this.messageElement = em.querySelector('#message');
+        this.dryRunCheckbox = em.querySelector('#dryRunCheckbox');
+
         this.toggleContactedButton = em.querySelector('#toggleContactedButton');
         this.sendButton = em.querySelector('#sendButton');
         this.sendLimit = em.querySelector('#sendLimit');
@@ -265,7 +292,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
         this.MapEvent(em, "tags", "input", this.RunQuery);
         this.MapEvent(em, "sendLimit", "input", this.SendLimitChanged);
         this.MapEvent(em, "sendButton", "click", this.RunCampaign);
-
+        this.MapEvent(em, "dryRunCheckbox", "change", this.DryRunCheckboxChanged);
         this.MapEvent(em, 'toggleContactedButton', 'click',this.ToggleContacted);
 
 
@@ -305,7 +332,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                     setTimeout(()=>
                     {
                         updateContactedRow.parentElement.removeChild(updateContactedRow);
-                    },1100);
+                    },1500);
                 }
             }
             return {success:true};

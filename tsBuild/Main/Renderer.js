@@ -55,8 +55,8 @@ define("Shared/RPC", ["require", "exports"], function (require, exports) {
     exports.Response = Response;
     class Transport {
     }
-    exports.Transport = Transport;
     Transport.g_transport = null;
+    exports.Transport = Transport;
     function SetTransport(t) {
         Transport.g_transport = t;
     }
@@ -552,8 +552,8 @@ define("Renderer/DOMComponent", ["require", "exports"], function (require, expor
             DOMPopupHandle.count++;
         }
     }
-    exports.DOMPopupHandle = DOMPopupHandle;
     DOMPopupHandle.count = 0;
+    exports.DOMPopupHandle = DOMPopupHandle;
     class DOMComponent {
         constructor(parent) {
             this.parent = parent;
@@ -662,6 +662,159 @@ define("Renderer/DOMComponent", ["require", "exports"], function (require, expor
         }
     }
 });
+define("Renderer/ProgressComponent", ["require", "exports", "Renderer/DOMComponent"], function (require, exports, DOMComponent_js_2) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    //simple progress bar
+    class ProgressComponent extends DOMComponent_js_2.DOMComponent {
+        //expect a number 0 to 100
+        SetProgressPercent(p) {
+            this.progressDiv.style.width = `${p}%`;
+        }
+        async Render(em) {
+            em.innerHTML = `<div id="progressInner" style="display:inline-block; width:0%; height:100%; background-color:rgb(88, 178, 255)"></div>`;
+            this.progressDiv = em.querySelector('#progressInner');
+        }
+    }
+    exports.ProgressComponent = ProgressComponent;
+});
+define("Renderer/FollowerCacheComponent", ["require", "exports", "Shared/ServerApi", "Renderer/DOMComponent", "Renderer/ProgressComponent"], function (require, exports, ServerApi, DOMComponent_js_3, ProgressComponent_js_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    //displays status of the follower cache, also displays buttons which can be used to trigger download / resume / re-download of followers
+    class FollowerCacheComponent extends DOMComponent_js_3.DOMComponent {
+        constructor(parent) {
+            super(parent);
+            this.progressComponent = null;
+            this.destElement = null;
+            this.progressInterval = null;
+            this.parent = null;
+            this.parent = parent;
+        }
+        MonitorProgress() {
+            if (this.progressInterval) {
+                //already monitoring
+                return;
+            }
+            //ok build has started.. need to poll for updates
+            this.progressInterval = setInterval(async () => {
+                try {
+                    let statusResult = await ServerApi.GetFollowerCacheStatus();
+                    if (statusResult.success) {
+                        this.progressComponent.SetProgressPercent(statusResult.completionPercent);
+                        if (statusResult.status !== ServerApi.FollowerCacheStatusEnum.InProgress) {
+                            //stop the interval
+                            clearInterval(this.progressInterval);
+                            this.progressInterval = null;
+                            //refresh the status displayed
+                            this.UpdateStatusUI();
+                            if (statusResult.status === ServerApi.FollowerCacheStatusEnum.Complete) {
+                                //make sure its visible
+                                this.parent.queryComponent.SetVisible(true);
+                                //if complete, run a query
+                                this.parent.queryComponent.RunQuery();
+                            }
+                        }
+                    }
+                }
+                catch (err) {
+                    console.log("MonitorProgress error:");
+                    console.error(err);
+                    clearInterval(this.progressInterval);
+                }
+            }, 2000);
+        }
+        async BuildCache(cmd) {
+            //before sending a build command we check what the current status is and make sure
+            //it makes sense to send a build command.
+            //
+            //reasons why we wouldn't send a build command:
+            //- attempt at getting cache status failed
+            //- cache status indicates its in progress on a download already
+            //- cache indicates its already complete - prompt user 'are you sure you want to rebuild?'
+            //- ??
+            //- profit
+            let statusResult;
+            let errorMessage = 'Sorry, something went wrong. Unable to retreive your followers right now.';
+            try {
+                statusResult = await ServerApi.GetFollowerCacheStatus();
+                if (statusResult.success !== true) {
+                    alert(errorMessage);
+                    return;
+                }
+            }
+            catch (err) {
+                alert(errorMessage);
+                console.log("BuildCache - failed to get current cache status");
+                console.error(err);
+                return;
+            }
+            if (statusResult.status === ServerApi.FollowerCacheStatusEnum.InProgress) {
+                alert("Follower download is in progress.");
+                return;
+            }
+            if (cmd === ServerApi.BuildFollowerCacheCommands.Rebuild) {
+                if (statusResult.status === ServerApi.FollowerCacheStatusEnum.Complete) {
+                    if (!confirm("Are you sure you want to rebuild? It takes about 15 minutes for 75k followers."))
+                        return;
+                }
+            }
+            let buildCacheResult = await ServerApi.BuildFollowerCache(cmd);
+            if (!buildCacheResult.success) {
+                console.log("BuildCache error: " + buildCacheResult.error);
+                alert(errorMessage);
+                return;
+            }
+            this.UpdateStatusUI();
+            this.MonitorProgress();
+        }
+        async Render(em) {
+            this.destElement = em;
+            this.UpdateStatusUI();
+        }
+        async UpdateStatusUI() {
+            let cacheStatusResponse = await ServerApi.GetFollowerCacheStatus();
+            let progressHtml = `<div id="progress" style="display:inline-block; margin-left: 4px; height:15px; width:100px; border:1px solid #d8d8d8"></div>`;
+            let html = '';
+            let progressShown = false;
+            let rebuildShown = false;
+            let resumeShown = false;
+            if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.None) {
+                html += `Let's get started and retreive your followers from Twitter. <button id="rebuildCache">Download Followers</button>`;
+                rebuildShown = true;
+            }
+            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.Incomplete) {
+                html += `Your last follower download didn't finish. <button id="resumeCache">Resume Downloading Followers</button>`;
+                resumeShown = true;
+            }
+            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.Complete) {
+                html += `${cacheStatusResponse.totalStoredFollowers} followers <button id="rebuildCache">Refresh Followers</button>`;
+                //make sure query ui gets displayed
+                rebuildShown = true;
+            }
+            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.InProgress) {
+                html +=
+                    `<div style="display:flex; align-items:center">
+                Follower Download Progress: ${progressHtml}
+                </div>`;
+                progressShown = true;
+                //make sure we are monitoring progress (might already be but just make sure)
+                this.MonitorProgress();
+            }
+            this.destElement.innerHTML = html;
+            this.progressComponent = new ProgressComponent_js_1.ProgressComponent(this);
+            if (progressShown) {
+                this.progressComponent.Render(this.destElement.querySelector('#progress'));
+                this.progressComponent.SetProgressPercent(cacheStatusResponse.completionPercent);
+            }
+            if (rebuildShown)
+                this.MapEvent(this.destElement, 'rebuildCache', 'click', () => this.BuildCache(ServerApi.BuildFollowerCacheCommands.Rebuild));
+            if (resumeShown)
+                this.MapEvent(this.destElement, 'resumeCache', 'click', () => this.BuildCache(ServerApi.BuildFollowerCacheCommands.Resume));
+        }
+    }
+    exports.FollowerCacheComponent = FollowerCacheComponent;
+});
 define("Shared/ClientApi", ["require", "exports", "Shared/RPC"], function (require, exports, RPC) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -710,127 +863,22 @@ define("Shared/ClientApi", ["require", "exports", "Shared/RPC"], function (requi
     }
     exports.NotifyMessageCampaignStoppedCall = NotifyMessageCampaignStoppedCall;
 });
-define("Renderer/HomePage", ["require", "exports", "Shared/RPC", "Shared/ServerApi", "Shared/ClientApi", "Renderer/DOMComponent"], function (require, exports, RPC, ServerApi, ClientApi, DOMComponent_js_2) {
+define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/ServerApi", "Shared/ClientApi", "Renderer/DOMComponent"], function (require, exports, RPC, ServerApi, ClientApi, DOMComponent_js_4) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     //only support a single / default messaging campaign from this UI currently
     let g_campaignId = 'default';
-    class ProgressComponent extends DOMComponent_js_2.DOMComponent {
-        //expect a number 0 to 100
-        SetProgressPercent(p) {
-            this.progressDiv.style.width = `${p}%`;
-        }
-        async Render(em) {
-            em.innerHTML = `<div id="progressInner" style="display:inline-block; width:0%; height:100%; background-color:rgb(88, 178, 255)"></div>`;
-            this.progressDiv = em.querySelector('#progressInner');
-        }
-    }
-    class CacheStatusComponent extends DOMComponent_js_2.DOMComponent {
-        async BuildCache(cmd) {
-            let statusResult;
-            let errorMessage = 'Sorry, something went wrong. Unable to retreive your followers right now.';
-            try {
-                statusResult = await ServerApi.GetFollowerCacheStatus();
-                if (statusResult.success !== true) {
-                    alert(errorMessage);
-                    return;
-                }
-            }
-            catch (err) {
-                alert(errorMessage);
-                console.log("BuildCache - failed to get current cache status");
-                console.error(err);
-                return;
-            }
-            if (statusResult.status === ServerApi.FollowerCacheStatusEnum.InProgress) {
-                alert("Follower download is in progress.");
-                return;
-            }
-            if (cmd === ServerApi.BuildFollowerCacheCommands.Rebuild) {
-                if (statusResult.status === ServerApi.FollowerCacheStatusEnum.Complete) {
-                    if (!confirm("Are you sure you want to rebuild? It takes about 15 minutes for 75k followers."))
-                        return;
-                }
-            }
-            let buildCacheResult = await ServerApi.BuildFollowerCache(cmd);
-            if (!buildCacheResult.success) {
-                console.log("BuildCache error: " + buildCacheResult.error);
-                alert(errorMessage);
-                return;
-            }
-            this.UpdateStatus();
-            //ok build has started.. need to poll for updates
-            let poll = setInterval(async () => {
-                try {
-                    let statusResult = await ServerApi.GetFollowerCacheStatus();
-                    if (statusResult.success) {
-                        this.progressComponent.SetProgressPercent(statusResult.completionPercent);
-                        if (statusResult.status !== ServerApi.FollowerCacheStatusEnum.InProgress) {
-                            //stop the interval
-                            clearInterval(poll);
-                            //refresh the status displayed
-                            this.UpdateStatus();
-                        }
-                    }
-                }
-                catch (err) {
-                    console.log("GetFollowerCacheStatus error:");
-                    console.error(err);
-                    clearInterval(poll);
-                }
-            }, 1000);
-        }
-        async Render(em) {
-            this.destElement = em;
-            this.UpdateStatus();
-        }
-        async UpdateStatus() {
-            let cacheStatusResponse = await ServerApi.GetFollowerCacheStatus();
-            let progressHtml = `<div id="progress" style="display:inline-block; margin-left: 4px; height:15px; width:100px; border:1px solid #d8d8d8"></div>`;
-            let html = '';
-            let progressShown = false;
-            let rebuildShown = false;
-            let resumeShown = false;
-            if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.None) {
-                html += `Let's get started and retreive your followers from Twitter. <button id="rebuildCache">Retreive Follower List</button>`;
-                rebuildShown = true;
-            }
-            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.Incomplete) {
-                html += `Your last follower download didn't finish. <button id="resumeCache">Resume Downloading Followers</button>`;
-                resumeShown = true;
-            }
-            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.Complete) {
-                html += `Followers download complete. <button id="rebuildCache">Refresh Downloaded Followers</button>`;
-                rebuildShown = true;
-            }
-            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.InProgress) {
-                html +=
-                    `<div style="display:flex; align-items:center">
-                Follower Download Progress: ${progressHtml}
-                </div>`;
-                progressShown = true;
-            }
-            this.destElement.innerHTML = html;
-            this.progressComponent = new ProgressComponent(this);
-            if (progressShown) {
-                this.progressComponent.Render(this.destElement.querySelector('#progress'));
-                this.progressComponent.SetProgressPercent(cacheStatusResponse.completionPercent);
-            }
-            if (rebuildShown)
-                this.MapEvent(this.destElement, 'rebuildCache', 'click', () => this.BuildCache(ServerApi.BuildFollowerCacheCommands.Rebuild));
-            if (resumeShown)
-                this.MapEvent(this.destElement, 'resumeCache', 'click', () => this.BuildCache(ServerApi.BuildFollowerCacheCommands.Resume));
-        }
-    }
-    class QueryComponent extends DOMComponent_js_2.DOMComponent {
+    class QueryComponent extends DOMComponent_js_4.DOMComponent {
         constructor(parent) {
             super(parent);
+            this.containerElement = null;
             this.resultsDiv = null;
             this.sortElement = null;
             this.tagsElement = null;
             this.messageElement = null;
             this.sendButton = null;
             this.sendLimit = null;
+            this.dryRunCheckbox = null;
             //if they update the query ui before a previous query has finished, we wait
             //for the previous query to finish.
             //we keep a queue of 1 query (representing the most recent query attempt) to run
@@ -838,8 +886,8 @@ define("Renderer/HomePage", ["require", "exports", "Shared/RPC", "Shared/ServerA
             this.queryRunning = false;
             this.deferredQuery = null;
             this.parent = null;
-            //by default we will show all followers including ones weve contacted
-            this.contactedVisible = true;
+            //by default we show only followers who we haven't contacted
+            this.contactedVisible = false;
             this.toggleContactedButton = null;
             this.campaignRunning = false;
             this.RunQuery = async () => {
@@ -889,7 +937,7 @@ define("Renderer/HomePage", ["require", "exports", "Shared/RPC", "Shared/ServerA
             };
             this.RunCampaign = async () => {
                 if (this.campaignRunning) {
-                    alert("Messaging campaign already running, please wait for it to finish");
+                    alert("Sending in progress, please wait for it to finish");
                     return;
                 }
                 var sort = this.sortElement.value;
@@ -925,10 +973,19 @@ define("Renderer/HomePage", ["require", "exports", "Shared/RPC", "Shared/ServerA
                 }
                 this.RunQuery();
             };
+            this.DryRunCheckboxChanged = () => {
+                if (!this.dryRunCheckbox.checked) {
+                    alert('With "Sandbox" unchecked, clicking "Send Messages" will send real direct messages. Be careful!');
+                }
+            };
             this.SendLimitChanged = () => {
                 let count = this.GetSendCount();
-                if (count !== null)
-                    this.sendButton.innerHTML = `Send To ${count} Followers`;
+                if (count !== null) {
+                    let msg = `Send To ${count} Follower`;
+                    if (count > 1)
+                        msg += 's';
+                    this.sendButton.innerHTML = msg;
+                }
                 else
                     this.sendButton.innerHTML = `Send To All Followers`;
             };
@@ -970,6 +1027,12 @@ define("Renderer/HomePage", ["require", "exports", "Shared/RPC", "Shared/ServerA
                 return null;
             }
         }
+        SetVisible(visible) {
+            if (visible)
+                this.containerElement.style.display = 'block';
+            else
+                this.containerElement.style.display = 'none';
+        }
         async Render(em) {
             let defaultMessage = `Hey there, are you interested in receiving my newsletter?
 
@@ -980,7 +1043,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                     <textarea id="message" style="padding-left:4px; resize:none; width:100%; height:60px;" type="text">${defaultMessage}</textarea>
                 </div>
                 <br/>
-                <div style="display:flex; justify-content:space-between">
+                <div style="display:flex; justify-content:flex-start; align-items:flex-end">
                     <div>
                         <div>Sort</div>
                         <select id="sortSelect">
@@ -988,15 +1051,15 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                             <option value="recent">Recently Followed</option>
                         </select>
                     </div>
-                    <div style="margin-left:12px">
+                    <div style="margin-left:16px">
                         <div>Filter</div>
                         <input id="tags" style="width:260px" type="text" placeholder="Twitter bio tags eg. health love dad">
                     </div>
-                    <div style="margin-left:12px">
+                    <div style="margin-left:16px">
                         <div>Send Limit</div>
-                        <input id="sendLimit" style="width:40px; margin-right:8px" type="text" placeholder="">
+                        <input id="sendLimit" style="width:40px; margin-right:8px" type="text" placeholder="" value="1">
                     </div>
-                    <div style="margin-left: 12px; align-self:stretch"><button style="height:100%" id="sendButton">Send To All Followers</button></div>
+                    <div style="margin-left: 16px; flex-grow:1"><input style="margin-left:0" id="dryRunCheckbox" type="checkbox" checked>Sandbox<br/><button id="sendButton" style="width:100%">Send To 1 Follower</button></div>
                 </div>
                 <br/>
 
@@ -1007,14 +1070,16 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                 <div class="followerScreenName">Twitter Handle</div>
                 <div class="followerFollowersCount">Followers</div>
                 <div class="followerContacted">Contacted</div>
-                <div style="margin-left:auto; padding-right:4px; width:130px; text-align:right"><button id="toggleContactedButton">Hide Contacted</button></div>
+                <div style="margin-left:auto; padding-right:4px; width:130px; text-align:right"><button id="toggleContactedButton">Show Contacted</button></div>
             </div>
             <div id="results"></div>
         `;
             em.innerHTML = html;
+            this.containerElement = em;
             this.sortElement = em.querySelector('#sortSelect');
             this.tagsElement = em.querySelector('#tags');
             this.messageElement = em.querySelector('#message');
+            this.dryRunCheckbox = em.querySelector('#dryRunCheckbox');
             this.toggleContactedButton = em.querySelector('#toggleContactedButton');
             this.sendButton = em.querySelector('#sendButton');
             this.sendLimit = em.querySelector('#sendLimit');
@@ -1023,6 +1088,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
             this.MapEvent(em, "tags", "input", this.RunQuery);
             this.MapEvent(em, "sendLimit", "input", this.SendLimitChanged);
             this.MapEvent(em, "sendButton", "click", this.RunCampaign);
+            this.MapEvent(em, "dryRunCheckbox", "change", this.DryRunCheckboxChanged);
             this.MapEvent(em, 'toggleContactedButton', 'click', this.ToggleContacted);
             this.RunQuery();
             /////////////////
@@ -1050,7 +1116,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                         updateContactedRow.style.maxHeight = '0px';
                         setTimeout(() => {
                             updateContactedRow.parentElement.removeChild(updateContactedRow);
-                        }, 1100);
+                        }, 1500);
                     }
                 }
                 return { success: true };
@@ -1063,11 +1129,16 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
             RPC.SetHandler(ClientApi.NotifyMessageSentCall, null);
         }
     }
-    class HomePage extends DOMComponent_js_2.DOMComponent {
+    exports.QueryComponent = QueryComponent;
+});
+define("Renderer/HomePage", ["require", "exports", "Shared/ServerApi", "Renderer/DOMComponent", "Renderer/FollowerCacheComponent", "Renderer/QueryComponent"], function (require, exports, ServerApi, DOMComponent_js_5, FollowerCacheComponent_js_1, QueryComponent_js_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    class HomePage extends DOMComponent_js_5.DOMComponent {
         constructor() {
             super(...arguments);
-            this.cacheStatusComponent = new CacheStatusComponent(this);
-            this.queryComponent = new QueryComponent(this);
+            this.FollowerCacheComponent = new FollowerCacheComponent_js_1.FollowerCacheComponent(this);
+            this.queryComponent = new QueryComponent_js_1.QueryComponent(this);
             this.userLogin = null;
             this.promoElement = null;
             this.ClosePromo = () => {
@@ -1093,25 +1164,28 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                 promoHtml =
                     `<div id="promo">
                 <div style="display:flex; align-items:center; border-radius:7px; padding:12px; border:1px solid #bbb">
-                    <div>Create a newsletter sign up link at <a href="${link}" target="_blank">${link}</a></div>
+                    <div>Create a sign up page for your newsletter at <a href="${link}" target="_blank">${link}</a></div>
                     <div id="closePromo" style="cursor:pointer; margin-left: auto; display:flex; justify-content:center; align-items: center; border-radius:28px; height:28px; width:28px; background-color: #deedff">X</div>
                 </div><br/>
             </div>`;
             }
+            //by default, the query UI is hidden until the FollowerCacheComponent determines
+            //whether there is a valid / complete cache in the DB. when there is, it will show the
+            //query interface
             var html = `
             <div style="display:flex; justify-content:center">
                 <div style="display:inline; width:320px;"><img style="width:100%;height:auto" src="logo.png"></div>
             </div>
             <div style="display:flex; justify-content:center">
-            <div>
+            <div style="min-width:700px">
                 <br/>
-                Hello, ${screen_name}!<br/><br/>
+                Hello, @${screen_name}!<br/><br/>
                 <div id="cacheStatus"></div><br/>
                 ${promoHtml}
-                <div id="query"></div>
+                <div style="display:none" id="query"></div>
             </div>`;
             em.innerHTML = html;
-            this.cacheStatusComponent.Render(em.querySelector('#cacheStatus'));
+            this.FollowerCacheComponent.Render(em.querySelector('#cacheStatus'));
             this.queryComponent.Render(em.querySelector('#query'));
             if (!promoHidden) {
                 this.MapEvent(em, "closePromo", "click", this.ClosePromo);
@@ -1119,28 +1193,27 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
             }
         }
         async RenderCleanup() {
-            this.cacheStatusComponent.RenderCleanup();
+            this.FollowerCacheComponent.RenderCleanup();
             this.queryComponent.RenderCleanup();
         }
     }
     exports.HomePage = HomePage;
 });
-define("Renderer/LoginPage", ["require", "exports", "Shared/ServerApi", "Renderer/DOMComponent"], function (require, exports, ServerApi, DOMComponent_js_3) {
+define("Renderer/LoginPage", ["require", "exports", "Shared/ServerApi", "Renderer/DOMComponent"], function (require, exports, ServerApi, DOMComponent_js_6) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    class LoginPage extends DOMComponent_js_3.DOMComponent {
+    class LoginPage extends DOMComponent_js_6.DOMComponent {
         constructor() {
             super(...arguments);
             this.ckey = null;
             this.csec = null;
-            this.rememberMe = null;
             this.Login = async () => {
                 let args = {
                     appAuth: {
                         consumer_key: this.ckey.value,
                         consumer_secret: this.csec.value
                     },
-                    saveUserAuth: this.rememberMe.checked
+                    saveUserAuth: true
                 };
                 let result = await ServerApi.Login(args);
                 if (!result.userLogin) {
@@ -1153,21 +1226,21 @@ define("Renderer/LoginPage", ["require", "exports", "Shared/ServerApi", "Rendere
             };
         }
         async Render(em) {
-            let link = "https://apps.twitter.com";
+            let link = "https://developer.twitter.com/apps";
             var html = `<br/>
             <div style="position:fixed; left:0; top:0; width:100vw; height:100vh; display:flex">
             <div style="margin:auto">
                 <div style="display:flex; justify-content:center">
                     <div style="display:inline; width:320px;"><img style="width:100%;height:auto" src="logo.png"></div>
                 </div>
-                <br/>
                 <div style="display:flex; justify-content:center">
                 <div style="text-align:center">
-                    To login, you will need to provide Twitter App API keys.<br /><br/>You can obtain keys from <a href="${link}" target="_blank">${link}</a></br /><br/>
+                    "All your followers at your fingertips."<br/><br/><br/>
+                    To sign in, you will need to provide Twitter App API keys.<br /><br/>You can obtain keys from <a href="${link}" target="_blank">${link}</a>.<br /><Br/>
+                    Click "Create an App" and paste the "Consumer API keys" below.</br /><br/><br/>
                     <div style="display:inline-block; width:130px; text-align:right">Consumer Key</div>  <input type="text" style="width:300px" id="consumer_key" ><br /><br/>
                     <div style="display:inline-block; width:130px; text-align:right">Consumer Secret</div> <input type="text" style="width:300px" id="consumer_secret" ><br /><br/>
-                    <button id="login">Login with Twitter</button><br/>
-                    <input id="rememberMe" type="checkbox">Remember Me
+                    <Br /><button id="login">Sign in with Twitter</button>
                 </div>
                 </div>
             </div>
@@ -1176,7 +1249,6 @@ define("Renderer/LoginPage", ["require", "exports", "Shared/ServerApi", "Rendere
             this.MapEvent(em, "login", "click", this.Login);
             this.ckey = em.querySelector('#consumer_key');
             this.csec = em.querySelector('#consumer_secret');
-            this.rememberMe = em.querySelector('#rememberMe');
             //grab the current Twitter app API keys (if they have been saved to disk.. would be there if any
             //previous login worked, or partially worked with good app keys but perhaps a bad user password)
             try {
@@ -1251,397 +1323,7 @@ define("Renderer/Site", ["require", "exports", "Shared/RPC", "Shared/ServerApi",
             this.Render(document.getElementById("site"));
         }
     }
-    exports.Site = Site;
     Site.g_site = null;
-});
-define("Renderer/ProgressComponent", ["require", "exports", "Renderer/DOMComponent"], function (require, exports, DOMComponent_js_4) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    //simple progress bar
-    class ProgressComponent extends DOMComponent_js_4.DOMComponent {
-        //expect a number 0 to 100
-        SetProgressPercent(p) {
-            this.progressDiv.style.width = `${p}%`;
-        }
-        async Render(em) {
-            em.innerHTML = `<div id="progressInner" style="display:inline-block; width:0%; height:100%; background-color:rgb(88, 178, 255)"></div>`;
-            this.progressDiv = em.querySelector('#progressInner');
-        }
-    }
-    exports.ProgressComponent = ProgressComponent;
-});
-define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/ServerApi", "Shared/ClientApi", "Renderer/DOMComponent"], function (require, exports, RPC, ServerApi, ClientApi, DOMComponent_js_5) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    //only support a single / default messaging campaign from this UI currently
-    let g_campaignId = 'default';
-    class QueryComponent extends DOMComponent_js_5.DOMComponent {
-        constructor(parent) {
-            super(parent);
-            this.resultsDiv = null;
-            this.sortElement = null;
-            this.tagsElement = null;
-            this.messageElement = null;
-            this.sendButton = null;
-            this.sendLimit = null;
-            //if they update the query ui before a previous query has finished, we wait
-            //for the previous query to finish.
-            //we keep a queue of 1 query (representing the most recent query attempt) to run
-            //after the completion of the previous query.
-            this.queryRunning = false;
-            this.deferredQuery = null;
-            this.parent = null;
-            //by default we will show all followers including ones weve contacted
-            this.contactedVisible = true;
-            this.toggleContactedButton = null;
-            this.campaignRunning = false;
-            this.RunQuery = async () => {
-                var sort = this.sortElement.value;
-                let tags = this.tagsElement.value.split(' ');
-                let query = {
-                    campaignId: g_campaignId,
-                    tags: tags,
-                    sort: sort,
-                    offset: 0,
-                    limit: 50,
-                    includeContacted: this.contactedVisible,
-                    useDryRunMessageHistory: true
-                };
-                if (this.queryRunning) {
-                    this.deferredQuery = query;
-                    return;
-                }
-                this.queryRunning = true;
-                //this loop exists to make sure that any queries queued
-                //while processing this query get immediately executed when
-                //this query finishes.
-                while (1) {
-                    try {
-                        let results = await ServerApi.QueryFollowerCache(query);
-                        //display the results
-                        this.RenderResults(results);
-                        if (this.deferredQuery) {
-                            //there was a query queued up while the previous query was processing.
-                            //we should loop and run that query now
-                            query = this.deferredQuery;
-                            this.deferredQuery = null;
-                        }
-                        else {
-                            //there is no deferred query to do, we can 
-                            //break out of this loop
-                            break;
-                        }
-                    }
-                    catch (err) {
-                        console.log("Error while processing query: " + JSON.stringify(query));
-                        console.error(err);
-                        break;
-                    }
-                }
-                this.queryRunning = false;
-            };
-            this.RunCampaign = async () => {
-                if (this.campaignRunning) {
-                    alert("Messaging campaign already running, please wait for it to finish");
-                    return;
-                }
-                var sort = this.sortElement.value;
-                let tags = this.tagsElement.value.split(' ');
-                let count = this.GetSendCount();
-                let campaign = {
-                    message: this.messageElement.value,
-                    campaign_id: g_campaignId,
-                    sort: sort,
-                    scheduling: "burst",
-                    dryRun: true,
-                    count: count,
-                    filter: {
-                        tags: tags
-                    }
-                };
-                this.campaignRunning = true;
-                let startOK = await ServerApi.RunMessagingCampaign(campaign);
-                if (startOK.success !== true) {
-                    alert('Unable to start sending messages: ' + startOK.errorMessage);
-                    this.campaignRunning = false;
-                    return;
-                }
-            };
-            this.ToggleContacted = () => {
-                if (this.contactedVisible) {
-                    this.contactedVisible = false;
-                    this.toggleContactedButton.innerHTML = "Show Contacted";
-                }
-                else {
-                    this.contactedVisible = true;
-                    this.toggleContactedButton.innerHTML = "Hide Contacted";
-                }
-                this.RunQuery();
-            };
-            this.SendLimitChanged = () => {
-                let count = this.GetSendCount();
-                if (count !== null)
-                    this.sendButton.innerHTML = `Send To ${count} Followers`;
-                else
-                    this.sendButton.innerHTML = `Send To All Followers`;
-            };
-            this.parent = parent;
-        }
-        RenderResults(results) {
-            let html = '';
-            for (var i = 0; i < results.followers.length; i++) {
-                let f = results.followers[i];
-                let imgUrl = f.profileImageUrl;
-                if (!imgUrl)
-                    imgUrl = "https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png";
-                let contactedString = 'No';
-                if (results.followers[i].contactDate)
-                    contactedString = 'Yes';
-                html +=
-                    `<div id="row-${f.screenName}" class="followerRowDeleter">
-                <div class="followerRow" onclick="window.open('https://twitter.com/${f.screenName}', '_blank')">
-                    <div class="followerIcon"><img class="followerIconImg" src="${imgUrl}"></div>
-                    <div class="followerName">${f.name}</div>
-                    <div class="followerScreenName">${f.screenName}</div>
-                    <div class="followerFollowersCount">${f.followersCount}</div>
-                    <div id="contacted-${f.screenName}" class="followerContacted">${contactedString}</div>
-                </div>
-                </div>`;
-            }
-            this.resultsDiv.innerHTML = html;
-        }
-        //returns null if the send count field is empty/blank
-        GetSendCount() {
-            if (this.sendLimit.value === '')
-                return null;
-            let count = 0;
-            try {
-                let count = parseInt(this.sendLimit.value);
-                return count;
-            }
-            catch (err) {
-                return null;
-            }
-        }
-        async Render(em) {
-            let defaultMessage = `Hey there, are you interested in receiving my newsletter?
-
-You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.screen_name}`;
-            let html = `<div>
-                Contact your followers with this message:<br/>
-                <div style="display:flex; align-items:center">
-                    <textarea id="message" style="padding-left:4px; resize:none; width:100%; height:60px;" type="text">${defaultMessage}</textarea>
-                </div>
-                <br/>
-                <div style="display:flex; justify-content:space-between">
-                    <div>
-                        <div>Sort</div>
-                        <select id="sortSelect">
-                            <option value="influence">Most Followers</option>
-                            <option value="recent">Recently Followed</option>
-                        </select>
-                    </div>
-                    <div style="margin-left:12px">
-                        <div>Filter</div>
-                        <input id="tags" style="width:260px" type="text" placeholder="Twitter bio tags eg. health love dad">
-                    </div>
-                    <div style="margin-left:12px">
-                        <div>Send Limit</div>
-                        <input id="sendLimit" style="width:40px; margin-right:8px" type="text" placeholder="">
-                    </div>
-                    <div style="margin-left: 12px; align-self:stretch"><button style="height:100%" id="sendButton">Send To All Followers</button></div>
-                </div>
-                <br/>
-
-            </div>
-            <div class="followerHeaderRow">
-                <div class="followerIcon">&nbsp</div>
-                <div class="followerName">Name</div>
-                <div class="followerScreenName">Twitter Handle</div>
-                <div class="followerFollowersCount">Followers</div>
-                <div class="followerContacted">Contacted</div>
-                <div style="margin-left:auto; padding-right:4px; width:130px; text-align:right"><button id="toggleContactedButton">Hide Contacted</button></div>
-            </div>
-            <div id="results"></div>
-        `;
-            em.innerHTML = html;
-            this.sortElement = em.querySelector('#sortSelect');
-            this.tagsElement = em.querySelector('#tags');
-            this.messageElement = em.querySelector('#message');
-            this.toggleContactedButton = em.querySelector('#toggleContactedButton');
-            this.sendButton = em.querySelector('#sendButton');
-            this.sendLimit = em.querySelector('#sendLimit');
-            this.resultsDiv = em.querySelector('#results');
-            this.MapEvent(em, "sortSelect", "change", this.RunQuery);
-            this.MapEvent(em, "tags", "input", this.RunQuery);
-            this.MapEvent(em, "sendLimit", "input", this.SendLimitChanged);
-            this.MapEvent(em, "sendButton", "click", this.RunCampaign);
-            this.MapEvent(em, 'toggleContactedButton', 'click', this.ToggleContacted);
-            this.RunQuery();
-            /////////////////
-            //sign up to handle message campaign stuff
-            ////////////////
-            RPC.SetHandler(ClientApi.NotifyMessageCampaignStartedCall, async (c) => {
-                this.campaignRunning = true;
-                return { success: true };
-            });
-            RPC.SetHandler(ClientApi.NotifyMessageCampaignStoppedCall, async (c) => {
-                this.campaignRunning = false;
-                return { success: true };
-            });
-            RPC.SetHandler(ClientApi.NotifyMessageSentCall, async (c) => {
-                //updated the Contacted column for this user to 'Yes'
-                let updateContactedElement = em.querySelector(`#contacted-${c.args.recipientScreenName}`);
-                if (updateContactedElement)
-                    updateContactedElement.innerHTML = 'Yes';
-                if (!this.contactedVisible) {
-                    //make their row disappear
-                    //animate the rows disappearance?
-                    let updateContactedRow = em.querySelector(`#row-${c.args.recipientScreenName}`);
-                    if (updateContactedRow) {
-                        updateContactedRow.style.opacity = '0';
-                        updateContactedRow.style.maxHeight = '0px';
-                        setTimeout(() => {
-                            updateContactedRow.parentElement.removeChild(updateContactedRow);
-                        }, 1100);
-                    }
-                }
-                return { success: true };
-            });
-        }
-        async RenderCleanup() {
-            //dont need these notifications anymore
-            RPC.SetHandler(ClientApi.NotifyMessageCampaignStartedCall, null);
-            RPC.SetHandler(ClientApi.NotifyMessageCampaignStoppedCall, null);
-            RPC.SetHandler(ClientApi.NotifyMessageSentCall, null);
-        }
-    }
-});
-define("Renderer/CacheStatusComponent", ["require", "exports", "Shared/ServerApi", "Renderer/DOMComponent", "Renderer/ProgressComponent"], function (require, exports, ServerApi, DOMComponent_js_6, ProgressComponent_js_1) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    //displays status of the follower cache, also displays buttons which can be used to trigger download / resume / re-download of followers
-    class CacheStatusComponent extends DOMComponent_js_6.DOMComponent {
-        constructor() {
-            super(...arguments);
-            this.progressComponent = null;
-            this.destElement = null;
-            this.progressInterval = null;
-        }
-        MonitorProgress() {
-            if (this.progressInterval) {
-                //already monitoring
-                return;
-            }
-            //ok build has started.. need to poll for updates
-            this.progressInterval = setInterval(async () => {
-                try {
-                    let statusResult = await ServerApi.GetFollowerCacheStatus();
-                    if (statusResult.success) {
-                        this.progressComponent.SetProgressPercent(statusResult.completionPercent);
-                        if (statusResult.status !== ServerApi.FollowerCacheStatusEnum.InProgress) {
-                            //stop the interval
-                            clearInterval(this.progressInterval);
-                            this.progressInterval = null;
-                            //refresh the status displayed
-                            this.UpdateStatusUI();
-                        }
-                    }
-                }
-                catch (err) {
-                    console.log("MonitorProgress error:");
-                    console.error(err);
-                    clearInterval(this.progressInterval);
-                }
-            }, 2000);
-        }
-        async BuildCache(cmd) {
-            //before sending a build command we check what the current status is and make sure
-            //it makes sense to send a build command.
-            //
-            //reasons why we wouldn't send a build command:
-            //- attempt at getting cache status failed
-            //- cache status indicates its in progress on a download already
-            //- cache indicates its already complete - prompt user 'are you sure you want to rebuild?'
-            //- ??
-            //- profit
-            let statusResult;
-            let errorMessage = 'Sorry, something went wrong. Unable to retreive your followers right now.';
-            try {
-                statusResult = await ServerApi.GetFollowerCacheStatus();
-                if (statusResult.success !== true) {
-                    alert(errorMessage);
-                    return;
-                }
-            }
-            catch (err) {
-                alert(errorMessage);
-                console.log("BuildCache - failed to get current cache status");
-                console.error(err);
-                return;
-            }
-            if (statusResult.status === ServerApi.FollowerCacheStatusEnum.InProgress) {
-                alert("Follower download is in progress.");
-                return;
-            }
-            if (cmd === ServerApi.BuildFollowerCacheCommands.Rebuild) {
-                if (statusResult.status === ServerApi.FollowerCacheStatusEnum.Complete) {
-                    if (!confirm("Are you sure you want to rebuild? It takes about 15 minutes for 75k followers."))
-                        return;
-                }
-            }
-            let buildCacheResult = await ServerApi.BuildFollowerCache(cmd);
-            if (!buildCacheResult.success) {
-                console.log("BuildCache error: " + buildCacheResult.error);
-                alert(errorMessage);
-                return;
-            }
-            this.UpdateStatusUI();
-            this.MonitorProgress();
-        }
-        async Render(em) {
-            this.destElement = em;
-            this.UpdateStatusUI();
-        }
-        async UpdateStatusUI() {
-            let cacheStatusResponse = await ServerApi.GetFollowerCacheStatus();
-            let progressHtml = `<div id="progress" style="display:inline-block; margin-left: 4px; height:15px; width:100px; border:1px solid #d8d8d8"></div>`;
-            let html = '';
-            let progressShown = false;
-            let rebuildShown = false;
-            let resumeShown = false;
-            if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.None) {
-                html += `Let's get started and retreive your followers from Twitter. <button id="rebuildCache">Retreive Follower List</button>`;
-                rebuildShown = true;
-            }
-            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.Incomplete) {
-                html += `Your last follower download didn't finish. <button id="resumeCache">Resume Downloading Followers</button>`;
-                resumeShown = true;
-            }
-            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.Complete) {
-                html += `Followers download complete. <button id="rebuildCache">Refresh Downloaded Followers</button>`;
-                rebuildShown = true;
-            }
-            else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.InProgress) {
-                html +=
-                    `<div style="display:flex; align-items:center">
-                Follower Download Progress: ${progressHtml}
-                </div>`;
-                progressShown = true;
-                //make sure we are monitoring progress (might already be but just make sure)
-                this.MonitorProgress();
-            }
-            this.destElement.innerHTML = html;
-            this.progressComponent = new ProgressComponent_js_1.ProgressComponent(this);
-            if (progressShown) {
-                this.progressComponent.Render(this.destElement.querySelector('#progress'));
-                this.progressComponent.SetProgressPercent(cacheStatusResponse.completionPercent);
-            }
-            if (rebuildShown)
-                this.MapEvent(this.destElement, 'rebuildCache', 'click', () => this.BuildCache(ServerApi.BuildFollowerCacheCommands.Rebuild));
-            if (resumeShown)
-                this.MapEvent(this.destElement, 'resumeCache', 'click', () => this.BuildCache(ServerApi.BuildFollowerCacheCommands.Resume));
-        }
-    }
+    exports.Site = Site;
 });
 //# sourceMappingURL=Renderer.js.map
