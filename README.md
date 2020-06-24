@@ -46,4 +46,7 @@ Influencer Toolkit automates sending of direct messages to your Twitter follower
 
 - Written by [@treylorswift](https://twitter.com/treylorswift)
 
-- Uses https://github.com/draftbit/twitter-lite/ for Twitter API access
+## Packages Used
+- [twitter-lite](https://github.com/draftbit/twitter-lite) for Twitter API access
+- [better-sqlite3](https://github.com/JoshuaWise/better-sqlite3) for local SQLite database
+- [oauth-electron-twitter](https://github.com/kanekotic/oauth-electron-twitter) for Twitter OAUTH in Electron
