@@ -4,7 +4,7 @@ Influencer Toolkit is an influencer marketing desktop application that automates
 
 ### Features
 
-- Node.js/Electron cross platform application
+- Cross platform application built using Electron & Node.js
 
 - Downloads your complete follower list from Twitter at roughly 300k followers per hour (per Twitter limits). Download is resumable if interrupted. Followers can be updated/re-downloaded again later.
 
@@ -29,6 +29,9 @@ Influencer Toolkit is an influencer marketing desktop application that automates
 6. When the follower download completes, you can view, sort, filter, and contact your followers.
 
 ### Pre-Built Binaries
+- [Windows 64-bit](https://github.com/treylorswift/InfluencerToolkitApp/releases/download/v1.0/InfluencerToolkit.Setup.1.0.0.exe
+)
+- Mac version coming as soon as I can figure out how to get Travis-CI to work :(
 
 ### Developer Install
 1. Make sure you have Node.js (at least version 9) and git installed 
