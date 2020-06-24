@@ -6,7 +6,7 @@ Influencer Toolkit automates sending of direct messages to your Twitter follower
 
 - Cross platform application built using Electron & Node.js
 
-- Downloads your complete follower list from Twitter at roughly 300k followers per hour (per Twitter limits). Download is resumable if interrupted. Followers can be updated/re-downloaded again later.
+- Downloads your complete follower list from Twitter at roughly 300k followers per hour. Download is resumable if interrupted. Followers can be updated/re-downloaded again later.
 
 - Integrates with "Influencer Toolkit Newsletters", a web app for managing newsletter sign ups at https://itk-signup.herokuapp.com. Quickly create a newsletter sign up page and send the link to your followers with the Influencer Toolkit Desktop App. You'll be notified by email when people sign up.
 
