@@ -24,7 +24,7 @@ Influencer Toolkit automates sending of direct messages to your Twitter follower
 2. Go to <https://developer.twitter.com/apps> and create a Twitter app for testing. Generate API keys with read, write, and Direct Message permissions.
 3. Run the Influencer Toolkit App, enter the API keys from step 2 and login with your Twitter account.
 4. Click to download your followers.
-5. While followers are downloading, visit https://itk-signup.herokuapp.com and create a mailing list sign up page.
+5. While followers are downloading, visit https://itk-signup.herokuapp.com and create a newsletter sign up page.
 6. When the follower download completes, you can view, sort, filter, and contact your followers.
 
 ### Pre-Built Binaries
