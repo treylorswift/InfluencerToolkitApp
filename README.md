@@ -21,7 +21,7 @@ Influencer Toolkit automates sending of direct messages to your Twitter follower
 ### Installation and Setup
 
 1. Download and install a pre-built binary or install via git (instructions below)
-2. Go to <https://apps.twitter.com> and create a Twitter app for testing. Generate API keys with read, write, and Direct Message permissions.
+2. Go to <https://developer.twitter.com/apps> and create a Twitter app for testing. Generate API keys with read, write, and Direct Message permissions.
 3. Run the Influencer Toolkit App, enter the API keys from step 2 and login with your Twitter account.
 4. Click to download your followers.
 5. While followers are downloading, visit https://itk-signup.herokuapp.com and create a mailing list sign up page.
@@ -38,7 +38,7 @@ Influencer Toolkit automates sending of direct messages to your Twitter follower
 3. `cd InfluencerToolkitApp`
 3. `npm install`
 4. `npm electron-rebuild` (better-sqlite3 is a native module and depending on your node version
-5. Go to <https://apps.twitter.com> and create a Twitter app for testing. Generate API keys with read, write, and Direct Message permissions.
+5. Go to <https://developer.twitter.com/apps> and create a Twitter app for testing. Generate API keys with read, write, and Direct Message permissions.
 6. `npm start` to launch the app
 7. To package your own Electron app installer, use `npm run dist`
 
