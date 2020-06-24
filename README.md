@@ -42,11 +42,14 @@ Influencer Toolkit automates sending of direct messages to your Twitter follower
 6. `npm start` to launch the app
 7. To package your own Electron app installer, use `npm run dist`
 
-## Credits
+### Influencer Toolkit Newsletters
+"Influencer Toolkit Newsletters" helps manage newsletter sign ups and is also on github at https://github.com/treylorswift/itk-signup.
+
+### Credits
 
 - Written by [@treylorswift](https://twitter.com/treylorswift)
 
-## Packages Used
+### Packages Used
 - [twitter-lite](https://github.com/draftbit/twitter-lite) for Twitter API access
 - [better-sqlite3](https://github.com/JoshuaWise/better-sqlite3) for local SQLite database
 - [oauth-electron-twitter](https://github.com/kanekotic/oauth-electron-twitter) for Twitter OAUTH in Electron
