@@ -15,9 +15,9 @@ export class QueryComponent extends DOMComponent
     sortElement:HTMLInputElement = null;
     tagsElement:HTMLInputElement = null;
     messageElement:HTMLInputElement = null;
-    sendButton:HTMLElement = null;
+    sendButton:HTMLButtonElement = null;
     sendLimit:HTMLInputElement = null;
-    dryRunCheckbox:HTMLInputElement = null;
+    sandboxCheckbox:HTMLInputElement = null;
 
     //if they update the query ui before a previous query has finished, we wait
     //for the previous query to finish.
@@ -52,7 +52,7 @@ export class QueryComponent extends DOMComponent
             offset:0,
             limit:50,
             includeContacted:this.contactedVisible,
-            useDryRunMessageHistory:true
+            useDryRunMessageHistory:this.sandboxCheckbox.checked
         }
 
         if (this.queryRunning)
@@ -133,7 +133,7 @@ export class QueryComponent extends DOMComponent
     {
         if (this.campaignRunning)
         {
-            alert("Sending in progress, please wait for it to finish");
+            this.DisplayModalMessage("Sending in progress, please wait for it to finish.");
             return;
         }
 
@@ -147,7 +147,7 @@ export class QueryComponent extends DOMComponent
             campaign_id:g_campaignId,
             sort:sort,
             scheduling:"burst",
-            dryRun:true,
+            dryRun:this.sandboxCheckbox.checked,
             count:count,
             filter:
             {
@@ -156,11 +156,12 @@ export class QueryComponent extends DOMComponent
         }
 
         this.campaignRunning = true;
+        this.sendButton.disabled = true;
 
         let startOK = await ServerApi.RunMessagingCampaign(campaign);
         if (startOK.success!==true)
         {
-            alert('Unable to start sending messages: ' + startOK.errorMessage);
+            this.DisplayModalMessage('Unable to start sending messages: ' + startOK.errorMessage);
             this.campaignRunning = false;
             return;
         }
@@ -199,12 +200,13 @@ export class QueryComponent extends DOMComponent
         }
     }
 
-    DryRunCheckboxChanged = () =>
+    SandboxCheckboxChanged = () =>
     {
-        if (!this.dryRunCheckbox.checked)
+        if (!this.sandboxCheckbox.checked)
         {
-            alert('With "Sandbox" unchecked, clicking "Send Messages" will send real direct messages. Be careful!');
+            this.DisplayModalMessage('<center>With "Sandbox" unchecked, clicking "Send Messages" will send real direct messages.<br/><br/>Be careful!</center>');
         }
+        this.RunQuery();
     }
 
     SendLimitChanged = () =>
@@ -239,9 +241,9 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
 
         let html = 
            `<div>
-                Contact your followers with this message:<br/>
+                Compose a message to your followers:<br/>
                 <div style="display:flex; align-items:center">
-                    <textarea id="message" style="padding-left:4px; resize:none; width:100%; height:60px;" type="text">${defaultMessage}</textarea>
+                    <textarea id="message" class="messageTextArea" type="text">${defaultMessage}</textarea>
                 </div>
                 <br/>
                 <div style="display:flex; justify-content:flex-start; align-items:flex-end">
@@ -260,7 +262,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                         <div>Send Limit</div>
                         <input id="sendLimit" style="width:40px; margin-right:8px" type="text" placeholder="" value="1">
                     </div>
-                    <div style="margin-left: 16px; flex-grow:1"><input style="margin-left:0" id="dryRunCheckbox" type="checkbox" checked>Sandbox<br/><button id="sendButton" style="width:100%">Send To 1 Follower</button></div>
+                    <div style="margin-left: 16px; flex-grow:1"><input style="margin-left:0" id="sandboxCheckbox" type="checkbox" checked>Sandbox<br/><button id="sendButton" style="width:100%">Send To 1 Follower</button></div>
                 </div>
                 <br/>
 
@@ -280,7 +282,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
         this.sortElement = em.querySelector('#sortSelect');
         this.tagsElement = em.querySelector('#tags');
         this.messageElement = em.querySelector('#message');
-        this.dryRunCheckbox = em.querySelector('#dryRunCheckbox');
+        this.sandboxCheckbox = em.querySelector('#sandboxCheckbox');
 
         this.toggleContactedButton = em.querySelector('#toggleContactedButton');
         this.sendButton = em.querySelector('#sendButton');
@@ -292,7 +294,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
         this.MapEvent(em, "tags", "input", this.RunQuery);
         this.MapEvent(em, "sendLimit", "input", this.SendLimitChanged);
         this.MapEvent(em, "sendButton", "click", this.RunCampaign);
-        this.MapEvent(em, "dryRunCheckbox", "change", this.DryRunCheckboxChanged);
+        this.MapEvent(em, "sandboxCheckbox", "change", this.SandboxCheckboxChanged);
         this.MapEvent(em, 'toggleContactedButton', 'click',this.ToggleContacted);
 
 
@@ -309,6 +311,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
 
         RPC.SetHandler(ClientApi.NotifyMessageCampaignStoppedCall, async (c:ClientApi.NotifyMessageCampaignStoppedCall):Promise<RPC.Response> =>
         {
+            this.sendButton.disabled = false;
             this.campaignRunning = false;
             return {success:true};
         });

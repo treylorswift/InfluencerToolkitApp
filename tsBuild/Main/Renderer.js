@@ -626,6 +626,34 @@ define("Renderer/DOMComponent", ["require", "exports"], function (require, expor
         DisplayModalMessage(message) {
             this.DisplayModalComponent(new StringMessageComponent(this, message));
         }
+        //same as DisplayModalMessage except shows an 'ok' and 'cancel' button
+        //resolves with true if they click ok, false if they click cancel or click outside the content
+        async DisplayModalConfirm(message) {
+            var modal = document.getElementById('modal');
+            var modalContent = document.getElementById('modal-content');
+            let confirmComponent = new ConfirmComponent(this, message);
+            //await the render so we are sure that it's .promise and .promiseResolve are accessible here
+            await confirmComponent.Render(modalContent);
+            modal.style.display = "flex";
+            // When the user clicks anywhere outside of the modal, close it
+            var checkOutsideClick = function (event) {
+                //'modal' is effectively a page-covering background behind the modal content
+                //which will catch any attemps to click anywhere other than the modal content
+                //if they do that, the modal dialog cancels out
+                if (event.target == modal) {
+                    modalContent.innerHTML = '';
+                    confirmComponent.promiseResolve(false); //clicking outside is the same as clicking cancel
+                    confirmComponent.RenderCleanup();
+                    modal.style.display = "none";
+                    window.removeEventListener("click", checkOutsideClick);
+                }
+            };
+            window.addEventListener("click", checkOutsideClick);
+            //this promise returned from the confirmcomponent gets resolved
+            //when ok is clicked, cancel is clicked, or right above here if they click
+            //outside the modal content
+            return confirmComponent.promise;
+        }
         DisplayModalComponent(component) {
             var modal = document.getElementById('modal');
             var modalContent = document.getElementById('modal-content');
@@ -633,6 +661,9 @@ define("Renderer/DOMComponent", ["require", "exports"], function (require, expor
             modal.style.display = "flex";
             // When the user clicks anywhere outside of the modal, close it
             var checkOutsideClick = function (event) {
+                //'modal' is effectively a page-covering background behind the modal content
+                //which will catch any attemps to click anywhere other than the modal content
+                //if they do that, the modal dialog cancels out
                 if (event.target == modal) {
                     modalContent.innerHTML = '';
                     component.RenderCleanup();
@@ -659,6 +690,35 @@ define("Renderer/DOMComponent", ["require", "exports"], function (require, expor
         }
         async Render(em) {
             em.innerHTML = this.message;
+        }
+    }
+    class ConfirmComponent extends DOMComponent {
+        constructor(parent, message) {
+            super(parent);
+            this.promise = null;
+            this.promiseResolve = null;
+            this.message = message;
+        }
+        async Render(em) {
+            this.promise = new Promise((resolve, reject) => {
+                //we have to save this resolve function so it can be accessed outside the component
+                //by DisplayConfirmComponent, which catches clicks outside the modal content area
+                //and resolves(false)
+                this.promiseResolve = resolve;
+                em.innerHTML =
+                    `${this.message}<br/><br/>
+                <div style="display:flex; justify-content:flex-end">
+                    <button id="ok" style="margin-right: 12px">OK</button><button id="cancel">Cancel</button>
+                </div>`;
+                em.querySelector('#ok').addEventListener('click', () => {
+                    this.ClearModalComponent();
+                    resolve(true);
+                });
+                em.querySelector('#cancel').addEventListener('click', () => {
+                    this.ClearModalComponent();
+                    resolve(false);
+                });
+            });
         }
     }
 });
@@ -708,12 +768,6 @@ define("Renderer/FollowerCacheComponent", ["require", "exports", "Shared/ServerA
                             this.progressInterval = null;
                             //refresh the status displayed
                             this.UpdateStatusUI();
-                            if (statusResult.status === ServerApi.FollowerCacheStatusEnum.Complete) {
-                                //make sure its visible
-                                this.parent.queryComponent.SetVisible(true);
-                                //if complete, run a query
-                                this.parent.queryComponent.RunQuery();
-                            }
                         }
                     }
                 }
@@ -755,7 +809,8 @@ define("Renderer/FollowerCacheComponent", ["require", "exports", "Shared/ServerA
             }
             if (cmd === ServerApi.BuildFollowerCacheCommands.Rebuild) {
                 if (statusResult.status === ServerApi.FollowerCacheStatusEnum.Complete) {
-                    if (!confirm("Are you sure you want to rebuild? It takes about 15 minutes for 75k followers."))
+                    let confirmOK = await this.DisplayModalConfirm("Are you sure you want to rebuild? It takes about 15 minutes for 75k followers.");
+                    if (!confirmOK)
                         return;
                 }
             }
@@ -774,25 +829,29 @@ define("Renderer/FollowerCacheComponent", ["require", "exports", "Shared/ServerA
         }
         async UpdateStatusUI() {
             let cacheStatusResponse = await ServerApi.GetFollowerCacheStatus();
-            let progressHtml = `<div id="progress" style="display:inline-block; margin-left: 4px; height:15px; width:100px; border:1px solid #d8d8d8"></div>`;
             let html = '';
             let progressShown = false;
-            let rebuildShown = false;
-            let resumeShown = false;
+            let buildShown = false;
+            let buildCommand = ServerApi.BuildFollowerCacheCommands.Rebuild;
+            let buildButtonId = "buildCache";
             if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.None) {
-                html += `Let's get started and retreive your followers from Twitter. <button id="rebuildCache">Download Followers</button>`;
-                rebuildShown = true;
+                html += `Let's get started and retreive your followers from Twitter. <button id="${buildButtonId}">Download Followers</button>`;
+                buildShown = true;
             }
             else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.Incomplete) {
-                html += `Your last follower download didn't finish. <button id="resumeCache">Resume Downloading Followers</button>`;
-                resumeShown = true;
+                html += `Your last follower download didn't finish. <button id="${buildButtonId}">Resume Downloading Followers</button>`;
+                buildShown = true;
+                buildCommand = ServerApi.BuildFollowerCacheCommands.Resume;
             }
             else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.Complete) {
-                html += `${cacheStatusResponse.totalStoredFollowers} followers <button id="rebuildCache">Refresh Followers</button>`;
+                html += `You have ${cacheStatusResponse.totalStoredFollowers} followers. <button id="${buildButtonId}">Refresh Followers</button>`;
                 //make sure query ui gets displayed
-                rebuildShown = true;
+                this.parent.queryComponent.SetVisible(true);
+                this.parent.queryComponent.RunQuery();
+                buildShown = true;
             }
             else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.InProgress) {
+                let progressHtml = `<div id="progress" style="display:inline-block; margin-left: 4px; height:15px; width:100px; border:1px solid #d8d8d8"></div>`;
                 html +=
                     `<div style="display:flex; align-items:center">
                 Follower Download Progress: ${progressHtml}
@@ -807,10 +866,8 @@ define("Renderer/FollowerCacheComponent", ["require", "exports", "Shared/ServerA
                 this.progressComponent.Render(this.destElement.querySelector('#progress'));
                 this.progressComponent.SetProgressPercent(cacheStatusResponse.completionPercent);
             }
-            if (rebuildShown)
-                this.MapEvent(this.destElement, 'rebuildCache', 'click', () => this.BuildCache(ServerApi.BuildFollowerCacheCommands.Rebuild));
-            if (resumeShown)
-                this.MapEvent(this.destElement, 'resumeCache', 'click', () => this.BuildCache(ServerApi.BuildFollowerCacheCommands.Resume));
+            if (buildShown)
+                this.MapEvent(this.destElement, 'buildCache', 'click', () => this.BuildCache(buildCommand));
         }
     }
     exports.FollowerCacheComponent = FollowerCacheComponent;
@@ -878,7 +935,7 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
             this.messageElement = null;
             this.sendButton = null;
             this.sendLimit = null;
-            this.dryRunCheckbox = null;
+            this.sandboxCheckbox = null;
             //if they update the query ui before a previous query has finished, we wait
             //for the previous query to finish.
             //we keep a queue of 1 query (representing the most recent query attempt) to run
@@ -900,7 +957,7 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
                     offset: 0,
                     limit: 50,
                     includeContacted: this.contactedVisible,
-                    useDryRunMessageHistory: true
+                    useDryRunMessageHistory: this.sandboxCheckbox.checked
                 };
                 if (this.queryRunning) {
                     this.deferredQuery = query;
@@ -937,7 +994,7 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
             };
             this.RunCampaign = async () => {
                 if (this.campaignRunning) {
-                    alert("Sending in progress, please wait for it to finish");
+                    this.DisplayModalMessage("Sending in progress, please wait for it to finish.");
                     return;
                 }
                 var sort = this.sortElement.value;
@@ -948,16 +1005,17 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
                     campaign_id: g_campaignId,
                     sort: sort,
                     scheduling: "burst",
-                    dryRun: true,
+                    dryRun: this.sandboxCheckbox.checked,
                     count: count,
                     filter: {
                         tags: tags
                     }
                 };
                 this.campaignRunning = true;
+                this.sendButton.disabled = true;
                 let startOK = await ServerApi.RunMessagingCampaign(campaign);
                 if (startOK.success !== true) {
-                    alert('Unable to start sending messages: ' + startOK.errorMessage);
+                    this.DisplayModalMessage('Unable to start sending messages: ' + startOK.errorMessage);
                     this.campaignRunning = false;
                     return;
                 }
@@ -973,10 +1031,11 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
                 }
                 this.RunQuery();
             };
-            this.DryRunCheckboxChanged = () => {
-                if (!this.dryRunCheckbox.checked) {
-                    alert('With "Sandbox" unchecked, clicking "Send Messages" will send real direct messages. Be careful!');
+            this.SandboxCheckboxChanged = () => {
+                if (!this.sandboxCheckbox.checked) {
+                    this.DisplayModalMessage('<center>With "Sandbox" unchecked, clicking "Send Messages" will send real direct messages.<br/><br/>Be careful!</center>');
                 }
+                this.RunQuery();
             };
             this.SendLimitChanged = () => {
                 let count = this.GetSendCount();
@@ -1038,9 +1097,9 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
 
 You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.screen_name}`;
             let html = `<div>
-                Contact your followers with this message:<br/>
+                Compose a message to your followers:<br/>
                 <div style="display:flex; align-items:center">
-                    <textarea id="message" style="padding-left:4px; resize:none; width:100%; height:60px;" type="text">${defaultMessage}</textarea>
+                    <textarea id="message" class="messageTextArea" type="text">${defaultMessage}</textarea>
                 </div>
                 <br/>
                 <div style="display:flex; justify-content:flex-start; align-items:flex-end">
@@ -1059,7 +1118,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                         <div>Send Limit</div>
                         <input id="sendLimit" style="width:40px; margin-right:8px" type="text" placeholder="" value="1">
                     </div>
-                    <div style="margin-left: 16px; flex-grow:1"><input style="margin-left:0" id="dryRunCheckbox" type="checkbox" checked>Sandbox<br/><button id="sendButton" style="width:100%">Send To 1 Follower</button></div>
+                    <div style="margin-left: 16px; flex-grow:1"><input style="margin-left:0" id="sandboxCheckbox" type="checkbox" checked>Sandbox<br/><button id="sendButton" style="width:100%">Send To 1 Follower</button></div>
                 </div>
                 <br/>
 
@@ -1079,7 +1138,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
             this.sortElement = em.querySelector('#sortSelect');
             this.tagsElement = em.querySelector('#tags');
             this.messageElement = em.querySelector('#message');
-            this.dryRunCheckbox = em.querySelector('#dryRunCheckbox');
+            this.sandboxCheckbox = em.querySelector('#sandboxCheckbox');
             this.toggleContactedButton = em.querySelector('#toggleContactedButton');
             this.sendButton = em.querySelector('#sendButton');
             this.sendLimit = em.querySelector('#sendLimit');
@@ -1088,7 +1147,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
             this.MapEvent(em, "tags", "input", this.RunQuery);
             this.MapEvent(em, "sendLimit", "input", this.SendLimitChanged);
             this.MapEvent(em, "sendButton", "click", this.RunCampaign);
-            this.MapEvent(em, "dryRunCheckbox", "change", this.DryRunCheckboxChanged);
+            this.MapEvent(em, "sandboxCheckbox", "change", this.SandboxCheckboxChanged);
             this.MapEvent(em, 'toggleContactedButton', 'click', this.ToggleContacted);
             this.RunQuery();
             /////////////////
@@ -1099,6 +1158,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                 return { success: true };
             });
             RPC.SetHandler(ClientApi.NotifyMessageCampaignStoppedCall, async (c) => {
+                this.sendButton.disabled = false;
                 this.campaignRunning = false;
                 return { success: true };
             });
@@ -1159,11 +1219,13 @@ define("Renderer/HomePage", ["require", "exports", "Shared/ServerApi", "Renderer
             let link = 'https://itk-signup.herokuapp.com';
             let promoHtml = '';
             let promoHidden = true;
-            if (window.localStorage.getItem('promoHidden') !== "1") {
+            //if (window.localStorage.getItem('promoHidden')!=="1")
+            {
+                let onePx = 1.0 / window.devicePixelRatio;
                 promoHidden = false;
                 promoHtml =
                     `<div id="promo">
-                <div style="display:flex; align-items:center; border-radius:7px; padding:12px; border:1px solid #bbb">
+                <div style="display:flex; align-items:center;  padding:12px; border:${onePx}px solid #000">
                     <div>Create a sign up page for your newsletter at <a href="${link}" target="_blank">${link}</a></div>
                     <div id="closePromo" style="cursor:pointer; margin-left: auto; display:flex; justify-content:center; align-items: center; border-radius:28px; height:28px; width:28px; background-color: #deedff">X</div>
                 </div><br/>

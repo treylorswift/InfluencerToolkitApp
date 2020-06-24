@@ -122,6 +122,44 @@ export abstract class DOMComponent
         this.DisplayModalComponent(new StringMessageComponent(this,message));
     }
 
+    //same as DisplayModalMessage except shows an 'ok' and 'cancel' button
+    //resolves with true if they click ok, false if they click cancel or click outside the content
+    async DisplayModalConfirm(message:string):Promise<boolean>
+    {
+        var modal = document.getElementById('modal');
+        var modalContent = document.getElementById('modal-content');
+        
+        let confirmComponent = new ConfirmComponent(this,message);
+
+        //await the render so we are sure that it's .promise and .promiseResolve are accessible here
+        await confirmComponent.Render(modalContent);
+
+        modal.style.display = "flex";
+
+        // When the user clicks anywhere outside of the modal, close it
+        var checkOutsideClick = function(event)
+        {
+            //'modal' is effectively a page-covering background behind the modal content
+            //which will catch any attemps to click anywhere other than the modal content
+            //if they do that, the modal dialog cancels out
+            if (event.target == modal)
+            {
+                modalContent.innerHTML = '';
+                confirmComponent.promiseResolve(false); //clicking outside is the same as clicking cancel
+                confirmComponent.RenderCleanup();
+                modal.style.display = "none";
+                window.removeEventListener("click",checkOutsideClick);
+            }
+        }
+
+        window.addEventListener("click", checkOutsideClick);
+
+        //this promise returned from the confirmcomponent gets resolved
+        //when ok is clicked, cancel is clicked, or right above here if they click
+        //outside the modal content
+        return confirmComponent.promise;
+    }
+
     DisplayModalComponent(component:DOMComponent)
     {
         var modal = document.getElementById('modal');
@@ -134,6 +172,9 @@ export abstract class DOMComponent
         // When the user clicks anywhere outside of the modal, close it
         var checkOutsideClick = function(event)
         {
+            //'modal' is effectively a page-covering background behind the modal content
+            //which will catch any attemps to click anywhere other than the modal content
+            //if they do that, the modal dialog cancels out
             if (event.target == modal)
             {
                 modalContent.innerHTML = '';
@@ -172,5 +213,47 @@ class StringMessageComponent extends DOMComponent
     async Render(em:Element)
     {
         em.innerHTML = this.message;
+    }
+}
+
+class ConfirmComponent extends DOMComponent
+{
+    message:string;
+    promise:Promise<boolean> = null;
+    promiseResolve:Function = null;
+
+    constructor(parent:DOMComponent,message:string)
+    {
+        super(parent);
+        this.message = message;
+    }
+
+    async Render(em:Element)
+    {
+        this.promise = new Promise((resolve,reject)=>
+        {
+            //we have to save this resolve function so it can be accessed outside the component
+            //by DisplayConfirmComponent, which catches clicks outside the modal content area
+            //and resolves(false)
+            this.promiseResolve = resolve;
+
+            em.innerHTML = 
+                `${this.message}<br/><br/>
+                <div style="display:flex; justify-content:flex-end">
+                    <button id="ok" style="margin-right: 12px">OK</button><button id="cancel">Cancel</button>
+                </div>`
+            
+            em.querySelector('#ok').addEventListener('click',()=>
+            {
+                this.ClearModalComponent();
+                resolve(true);
+            });
+
+            em.querySelector('#cancel').addEventListener('click',()=>
+            {
+                this.ClearModalComponent()
+                resolve(false);
+            });
+        });
     }
 }

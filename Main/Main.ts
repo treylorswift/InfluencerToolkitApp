@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as Twitter from 'twitter-lite'
 import {TwitterUser} from './TwitterUser'
-import * as TwitterFollowerDB from './TwitterFollowerDB'
 import {MessagingCampaignManager,MessagingCampaign} from './MessagingCampaign'
 import * as ClientApi from '../Shared/ClientApi'
 import {ElectronIPC} from '../Shared/ElectronIPC';

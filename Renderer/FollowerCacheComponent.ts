@@ -43,15 +43,6 @@ export class FollowerCacheComponent extends DOMComponent
 
                         //refresh the status displayed
                         this.UpdateStatusUI();
-
-                        if (statusResult.status===ServerApi.FollowerCacheStatusEnum.Complete)
-                        {
-                            //make sure its visible
-                            this.parent.queryComponent.SetVisible(true);
-
-                            //if complete, run a query
-                            this.parent.queryComponent.RunQuery();
-                        }
                     }
                 }
             }
@@ -107,7 +98,9 @@ export class FollowerCacheComponent extends DOMComponent
         {
             if (statusResult.status===ServerApi.FollowerCacheStatusEnum.Complete)
             {
-                if (!confirm("Are you sure you want to rebuild? It takes about 15 minutes for 75k followers."))
+                let confirmOK = await this.DisplayModalConfirm("Are you sure you want to rebuild? It takes about 15 minutes for 75k followers.");
+                    
+                if (!confirmOK)
                     return;
             }
         }
@@ -134,41 +127,48 @@ export class FollowerCacheComponent extends DOMComponent
     {
         let cacheStatusResponse = await ServerApi.GetFollowerCacheStatus();
 
-        let progressHtml =
-            `<div id="progress" style="display:inline-block; margin-left: 4px; height:15px; width:100px; border:1px solid #d8d8d8"></div>`
 
         let html = '';
 
         let progressShown = false;
-        let rebuildShown = false;
-        let resumeShown = false;
+        let buildShown = false;
+        let buildCommand = ServerApi.BuildFollowerCacheCommands.Rebuild;
+        let buildButtonId = "buildCache";
 
         if (cacheStatusResponse.status===ServerApi.FollowerCacheStatusEnum.None)
         {
-            html += `Let's get started and retreive your followers from Twitter. <button id="rebuildCache">Download Followers</button>`
-            rebuildShown = true;
+            html += `Let's get started and retreive your followers from Twitter. <button id="${buildButtonId}">Download Followers</button>`
+            buildShown = true;
         }
         else
         if (cacheStatusResponse.status===ServerApi.FollowerCacheStatusEnum.Incomplete)
         {
-            html += `Your last follower download didn't finish. <button id="resumeCache">Resume Downloading Followers</button>`
-            resumeShown = true;
+            html += `Your last follower download didn't finish. <button id="${buildButtonId}">Resume Downloading Followers</button>`
+            buildShown = true;
+            buildCommand = ServerApi.BuildFollowerCacheCommands.Resume;
         }
         else
         if (cacheStatusResponse.status===ServerApi.FollowerCacheStatusEnum.Complete)
         {
-            html += `${cacheStatusResponse.totalStoredFollowers} followers <button id="rebuildCache">Refresh Followers</button>`
-            //make sure query ui gets displayed
+            html += `You have ${cacheStatusResponse.totalStoredFollowers} followers. <button id="${buildButtonId}">Refresh Followers</button>`
 
-            rebuildShown = true;
+            //make sure query ui gets displayed
+            this.parent.queryComponent.SetVisible(true);
+            this.parent.queryComponent.RunQuery();
+
+            buildShown = true;
         }
         else
         if (cacheStatusResponse.status===ServerApi.FollowerCacheStatusEnum.InProgress)
         {
+            let progressHtml =
+                `<div id="progress" style="display:inline-block; margin-left: 4px; height:15px; width:100px; border:1px solid #d8d8d8"></div>`
+
             html +=
                 `<div style="display:flex; align-items:center">
                 Follower Download Progress: ${progressHtml}
                 </div>`
+
             progressShown = true;
             //make sure we are monitoring progress (might already be but just make sure)
             this.MonitorProgress();
@@ -183,9 +183,7 @@ export class FollowerCacheComponent extends DOMComponent
             this.progressComponent.SetProgressPercent(cacheStatusResponse.completionPercent);
         }
 
-        if (rebuildShown)
-            this.MapEvent(this.destElement,'rebuildCache','click',()=>this.BuildCache(ServerApi.BuildFollowerCacheCommands.Rebuild));
-        if (resumeShown)
-            this.MapEvent(this.destElement,'resumeCache','click',()=>this.BuildCache(ServerApi.BuildFollowerCacheCommands.Resume));
+        if (buildShown)
+            this.MapEvent(this.destElement,'buildCache','click',()=>this.BuildCache(buildCommand));
     }
 }

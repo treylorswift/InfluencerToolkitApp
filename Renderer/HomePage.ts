@@ -32,12 +32,14 @@ export class HomePage extends DOMComponent
 
         let promoHtml = ''
         let promoHidden = true;
-        if (window.localStorage.getItem('promoHidden')!=="1")
+        //if (window.localStorage.getItem('promoHidden')!=="1")
         {
+            let onePx = 1.0/window.devicePixelRatio;
+
             promoHidden = false;
             promoHtml = 
                `<div id="promo">
-                <div style="display:flex; align-items:center; border-radius:7px; padding:12px; border:1px solid #bbb">
+                <div style="display:flex; align-items:center;  padding:12px; border:${onePx}px solid #000">
                     <div>Create a sign up page for your newsletter at <a href="${link}" target="_blank">${link}</a></div>
                     <div id="closePromo" style="cursor:pointer; margin-left: auto; display:flex; justify-content:center; align-items: center; border-radius:28px; height:28px; width:28px; background-color: #deedff">X</div>
                 </div><br/>
