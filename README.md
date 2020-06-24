@@ -1,6 +1,6 @@
 # Influencer Toolkit Desktop App
 
-Influencer Toolkit automates sending of direct messages to your Twitter followers, with a focus on soliciting mailing list / newsletter signups. Send up to 1000 messages per day (per Twitter guidelines).
+Influencer Toolkit automates sending of direct messages to your Twitter followers, with a focus on soliciting mailing list / newsletter signups. Send up to 1000 messages per day.
 
 ### Features
 
