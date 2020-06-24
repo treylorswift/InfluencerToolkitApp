@@ -10,13 +10,12 @@ Influencer Toolkit automates sending of direct messages to your Twitter follower
 
 - Integrates with "Influencer Toolkit Newsletters", a web app for managing newsletter sign ups at https://itk-signup.herokuapp.com. Quickly create a newsletter sign up page and send the link to your followers with the Influencer Toolkit Desktop App. You'll be notified by email when people sign up.
 
-- Followers are displayed in a table and can be sorted and filtered in various ways. Sort by "Most Followers" or "Most Recently Followed". Filter by entering tags which will be matched against each user's Twitter bio.
+- Followers are displayed in a table. Sort by "Most Followers" or "Most Recently Followed". Filter results by entering tags which will be matched against each user's Twitter bio.
 
-- Message sending history is tracked in a database to ensure each follower is contacted only once. Message sends are scheduled to avoid hitting Twitter API rate limit errors.
+- Message sending history is tracked to ensure each follower is contacted only once. Message sends are scheduled to avoid hitting Twitter API rate limit errors.
  
-- A separate "dry run" message history sandbox allows you to simulate sending of messages to see how the program operates without actually spamming people.
+- A separate "Sandbox" message history allows you to simulate sending of messages to see how the program operates without actually sending real messages.
 
-- Sending can be scheduled in "burst" or "spread" mode. Send your 1000 messages per day all at once or spread them out over a 24 hour period (roughly 1 message every 86 seconds).
 ### 
 
 ### Installation and Setup
