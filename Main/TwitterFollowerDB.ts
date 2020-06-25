@@ -28,7 +28,7 @@ import {FollowerCacheQuery,FollowerCacheQueryResult,FollowerCacheStatusEnum} fro
 //we keep a row in the TwitterFollowerTasks table so we know how far along we are
 //so it can be resumed later if it gets aborted in the middle
 
-class TwitterDB
+export class TwitterDB
 {
     private db:DB = null;
     
@@ -169,6 +169,20 @@ class TwitterDB
                 );
             `).run();
 
+            //index the campaign_id in the message history
+            this.db.prepare(`
+                CREATE INDEX IF NOT EXISTS TwitterMessageHistory_campaign_id_index ON TwitterMessageHistory (
+                    "campaign_id"
+                );
+            `).run();
+
+            //index the id_str in the message history
+            this.db.prepare(`
+                CREATE INDEX IF NOT EXISTS TwitterMessageHistory_id_str_index ON TwitterMessageHistory (
+                    "id_str"
+                );
+            `).run();
+
             //the dry run message history is the same as the normal
             //message history but it is stored separately so that
             //the two histories dont conflict with each other when
@@ -178,6 +192,20 @@ class TwitterDB
                     campaign_id TEXT NOT NULL,
                     id_str TEXT NOT NULL,
                     date INTEGER
+                );
+            `).run();
+
+            //index the campaign_id in the dry run message history
+            this.db.prepare(`
+                CREATE INDEX IF NOT EXISTS TwitterDryRunMessageHistory_campaign_id_index ON TwitterDryRunMessageHistory (
+                    "campaign_id"
+                );
+            `).run();
+
+            //index the id_str in the dry run message history
+            this.db.prepare(`
+                CREATE INDEX IF NOT EXISTS TwitterDryRunMessageHistory_id_str_index ON TwitterDryRunMessageHistory (
+                    "id_str"
                 );
             `).run();
 
@@ -201,7 +229,6 @@ export type FollowerCacheStatus =
 {
     status:FollowerCacheStatusEnum,
     completionPercent:number,
-    //only valid when status===Complete
     totalStoredFollowers:number 
 }
 
@@ -221,7 +248,7 @@ export abstract class TwitterFollowerCacheBase
     //@ts-ignore
     async Init(twitter:Twitter, screen_name:string):Promise<boolean>
     {
-        //console.log('TwitterFollowerCache forcing screen_name to balajis');
+        //console.log('TwitterFollowerCacheBase hardcoded screen_name set to balajis');
         //screen_name = 'balajis'
         try
         {
@@ -492,178 +519,7 @@ export abstract class TwitterFollowerCacheBase
     }
 }
 
-export enum SendDelayReason
-{
-    NoDelay,
-    Spread,
-    RateLimit
-}
 
-type SendDelayInfo = {millisToWait:number,reason:SendDelayReason}
-
-export class MessageHistory
-{
-    twitterDB:TwitterDB;
-    db:DB;
-
-    campaign:MessagingCampaign;
-    tableName:string;
-
-    //we keep the most recently sent 1000 messages in memory because we need to refer to those
-    //in order to properly schedule sends
-    events:Array<MessageEvent>;
-
-    constructor(campaign:MessagingCampaign)
-    {
-        this.campaign = campaign;
-
-        this.twitterDB = new TwitterDB();
-        this.twitterDB.Init();
-        this.db = this.twitterDB.GetDB();
-        this.events = new Array<MessageEvent>();
-
-        this.tableName = 'TwitterMessageHistory';
-        if (campaign.dryRun===true)
-            this.tableName = 'TwitterDryRunMessageHistory';
-        
-        //get the most recent 1000 messages sent
-        try
-        {
-            let initCacheCmd = this.db.prepare(`SELECT * FROM ${this.tableName} WHERE campaign_id=? ORDER BY date DESC LIMIT 1000`);
-            let result = initCacheCmd.all([this.campaign.campaign_id]);
-
-            for (var i=0; i<result.length; i++)
-            {
-                this.events.push({campaign_id:result[i].campaign_id,recipient:result[i].id_str,time:new Date(result[i].date)});
-            }
-        }
-        catch (err)
-        {
-            console.log("Error initializing MessageHistory in-mem cache");
-            console.error(err);
-        }
-    }
-
-    StoreMessageEvent(e:MessageEvent):boolean
-    {
-        try
-        {
-            if (e.campaign_id!==this.campaign.campaign_id)
-            {
-                console.log("StoreMessageEvent - incorrect campaign id");
-                return false;
-            }
-
-            let storeCmd = this.db.prepare(`INSERT INTO ${this.tableName} VALUES(?,?,?)`);
-
-            storeCmd.run([e.campaign_id, e.recipient, e.time.getTime()]);
-
-            //store this into the in memory event cache
-            this.events.push(e);
-
-            //we dont need to keep more than 1000 events in memory
-            if (this.events.length>=1001)
-                this.events.shift();
-
-            return true;
-        }
-        catch (err)
-        {
-            console.log("StoreMessageEvent error:");
-            console.error(err);
-            return false;
-        }
-    }
-
-    //the time until next send is determined by
-    //- history of messages sent thus far
-    //- scheduling preference (burst or spread)
-    //- twitter rate limit of 1000 messages per 24 hour period
-    CalcMillisToWaitUntilNextSend(campaign:MessagingCampaign):SendDelayInfo
-    {
-        var curTime = new Date();
-        let millisIn24Hours = 1000*60*60*24;
-
-        //in initial cases there is no need to wait and we can send with no delay
-        let minimumWait = 0;
-        let minimumDelayReason = SendDelayReason.NoDelay;
-
-        //spread scheduling can impose a delay after the very first sent message.
-        //it will increase the minimumWait and set the minimumDelayReason appropriately (if necessary)
-        if (campaign.scheduling==="spread")
-        {
-            //we want to evenly distribute 1000 messages over a 24 hour period
-            let minimumSendInterval = millisIn24Hours / 1000;
-
-            //spread scheduling dictates that the next send should occur minimumSendInterval after the most recently sent message.
-            if (this.events.length>0)
-            {
-                let mostRecentSend = this.events[this.events.length-1].time;
-                let timeToSend = new Date(mostRecentSend.getTime() + minimumSendInterval);
-
-                //how much time remains between now and the time at which spread scheduling dictates we should send?
-                minimumWait = timeToSend.getTime() - curTime.getTime();
-                if (minimumWait>0)
-                {
-                    //impose minimum delay due to spread scheduling
-                    minimumDelayReason = SendDelayReason.Spread;
-                }
-                else
-                {
-                    //we're already past the minimum send interval, spread scheduling imposes no additional minimum wait
-                    minimumWait = 0;
-                }
-            }
-        }
-
-        //if we haven't yet sent 1000 messages, twitter api rate limits dont apply so we can 
-        //we know we can sent the next message without further delay
-        if (this.events.length<1000)
-            return {millisToWait:minimumWait,reason:minimumDelayReason};
-
-        //we HAVE sent 1000 messages... 
-
-        //look back 1000 messages into the past. when did we send that one?
-        //was it more than 24 hours ago? if so, rate limits dont apply and we can send without
-        //further delay
-        let indexOf1000thMessage = this.events.length - 1000;
-        let event = this.events[indexOf1000thMessage];
-
-        var twentyTwentyTwentyFourHoursAgooo = new Date(curTime.getTime() - millisIn24Hours);
-
-        //if the 1000th message in the past is more than 24 hours old, we can send without further delay
-        if (event.time.getTime() < twentyTwentyTwentyFourHoursAgooo.getTime())
-            return {millisToWait:minimumWait,reason:minimumDelayReason};
-
-        //ok so the 1000th message is within the past 24 hours. the time at which
-        //we will be able to send is 24 hours after that message.
-        let timeToSend = new Date(event.time.getTime() + millisIn24Hours);
-
-        //how much time remains between now and the time at which api rate limits dictate we can send?
-        let timeToWait = timeToSend.getTime() - curTime.getTime();
-        if (timeToWait<0)
-        {
-            console.log(`Unexpected error calculating timeToWait, curTime: ${curTime} - timeToSend: ${timeToSend}`);
-            timeToWait = 0;
-        }
-
-        //reconcile timeToWait against the minimumWait calculated above (possibly by spread scheduling)
-        //its possible api rate limits may not dictate the delay at this point but if api rate limit
-        //requires us to wait longer than the minimumWait calculated above, we must wait for the longer
-        //timeToWait, and note that the reason is due to api rate limits
-        if (timeToWait>minimumWait)
-        {
-            return {millisToWait:timeToWait, reason:SendDelayReason.RateLimit}
-        }
-        else
-        {
-            //api rate limits do not require any delay beyond the minimum already calculated so we just
-            //return the minimum delay as it was already calculated
-            return {millisToWait:minimumWait,reason:minimumDelayReason};
-        }
-    }
-
-}
 
 export class TwitterFollowerCacheSQL extends TwitterFollowerCacheBase
 {
@@ -802,9 +658,11 @@ export class TwitterFollowerCacheSQL extends TwitterFollowerCacheBase
                 queryValues.push(q.offset.toString());
             }
 
+            //let start = new Date();
             let queryCommand = this.db.prepare(queryString);
-
             let results = queryCommand.all(queryValues);
+            //let end = new Date();
+            //console.log(`Query time: ${end.getTime()-start.getTime()}ms`);
 
             let arr = new Array<FollowerCacheQueryResult>();
             for (var i=0; i<results.length; i++)

@@ -41,6 +41,11 @@ export class FollowerCacheComponent extends DOMComponent
                         clearInterval(this.progressInterval);
                         this.progressInterval = null;
 
+                        //once the downloads have finished, we should update the query results
+                        //(they may or may not be visible but either way, the results should be there
+                        //for when they are eventually shown)
+                        this.parent.queryComponent.RunQuery();
+
                         //refresh the status displayed
                         this.UpdateStatusUI();
                     }
@@ -154,7 +159,6 @@ export class FollowerCacheComponent extends DOMComponent
 
             //make sure query ui gets displayed
             this.parent.queryComponent.SetVisible(true);
-            this.parent.queryComponent.RunQuery();
 
             buildShown = true;
         }

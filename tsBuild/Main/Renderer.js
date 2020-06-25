@@ -766,6 +766,10 @@ define("Renderer/FollowerCacheComponent", ["require", "exports", "Shared/ServerA
                             //stop the interval
                             clearInterval(this.progressInterval);
                             this.progressInterval = null;
+                            //once the downloads have finished, we should update the query results
+                            //(they may or may not be visible but either way, the results should be there
+                            //for when they are eventually shown)
+                            this.parent.queryComponent.RunQuery();
                             //refresh the status displayed
                             this.UpdateStatusUI();
                         }
@@ -847,7 +851,6 @@ define("Renderer/FollowerCacheComponent", ["require", "exports", "Shared/ServerA
                 html += `You have ${cacheStatusResponse.totalStoredFollowers} followers. <button id="${buildButtonId}">Refresh Followers</button>`;
                 //make sure query ui gets displayed
                 this.parent.queryComponent.SetVisible(true);
-                this.parent.queryComponent.RunQuery();
                 buildShown = true;
             }
             else if (cacheStatusResponse.status === ServerApi.FollowerCacheStatusEnum.InProgress) {
@@ -895,8 +898,9 @@ define("Shared/ClientApi", ["require", "exports", "Shared/RPC"], function (requi
     }
     exports.NotifyMessageSentCall = NotifyMessageSentCall;
     /////////////////
-    //Notify Message Campaign Started / Stopped
+    //Notify Message Campaign Started / Stopped / Waiting
     ///////////////////
+    //Started
     function NotifyMessageCampaignStarted() {
         new NotifyMessageCampaignStartedCall().CallNoResponse();
     }
@@ -908,6 +912,7 @@ define("Shared/ClientApi", ["require", "exports", "Shared/RPC"], function (requi
         }
     }
     exports.NotifyMessageCampaignStartedCall = NotifyMessageCampaignStartedCall;
+    //Stopped
     function NotifyMessageCampaignStopped() {
         new NotifyMessageCampaignStoppedCall().CallNoResponse();
     }
@@ -919,6 +924,25 @@ define("Shared/ClientApi", ["require", "exports", "Shared/RPC"], function (requi
         }
     }
     exports.NotifyMessageCampaignStoppedCall = NotifyMessageCampaignStoppedCall;
+    //Waiting
+    function NotifyMessageCampaignWaiting(args) {
+        new NotifyMessageCampaignWaitingCall(args).CallNoResponse();
+    }
+    exports.NotifyMessageCampaignWaiting = NotifyMessageCampaignWaiting;
+    var SendDelayReason;
+    (function (SendDelayReason) {
+        SendDelayReason["NoDelay"] = "NoDelay";
+        SendDelayReason["Spread"] = "Spread";
+        SendDelayReason["RateLimit"] = "RateLimit";
+    })(SendDelayReason = exports.SendDelayReason || (exports.SendDelayReason = {}));
+    class NotifyMessageCampaignWaitingCall extends RPC.Call {
+        constructor(args) {
+            super();
+            this.method = "NotifyMessageCampaignWaiting";
+            this.args = args;
+        }
+    }
+    exports.NotifyMessageCampaignWaitingCall = NotifyMessageCampaignWaitingCall;
 });
 define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/ServerApi", "Shared/ClientApi", "Renderer/DOMComponent"], function (require, exports, RPC, ServerApi, ClientApi, DOMComponent_js_4) {
     "use strict";
@@ -936,6 +960,17 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
             this.sendButton = null;
             this.sendLimit = null;
             this.sandboxCheckbox = null;
+            this.waitingMessage = null;
+            //how many query results we will show on screen
+            this.numResultsToDisplay = 50;
+            //we intentionally query for more results than we can display on screen so
+            //that when sending messages, we have the necessary information needed to
+            //fill in at the bottom of the list as entries dissappear from the top
+            this.extraRows = null;
+            this.nextExtraRowToAppear = 0;
+            //1.5secs is the full animation time for a row deletion.
+            //(many rows might be disappearing at once though)
+            this.rowDeletionAnimationTime = 1500;
             //if they update the query ui before a previous query has finished, we wait
             //for the previous query to finish.
             //we keep a queue of 1 query (representing the most recent query attempt) to run
@@ -950,12 +985,21 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
             this.RunQuery = async () => {
                 var sort = this.sortElement.value;
                 let tags = this.tagsElement.value.split(' ');
+                //we ask for 1000 more than the # we are going to display. this is because
+                //we may, at the click of a button, send 1000 message - and we need at least
+                //numResultsToDisplay more than that to be left over to show in the
+                //query area as the messages are sent.
+                //
+                //when message sends complete, the display is requeried anyway, but this
+                //ensures that the display will fill in promptly (from the bottom) as
+                //entries disappear at the top
+                let queryLimit = this.numResultsToDisplay + 1000;
                 let query = {
                     campaignId: g_campaignId,
                     tags: tags,
                     sort: sort,
                     offset: 0,
-                    limit: 50,
+                    limit: queryLimit,
                     includeContacted: this.contactedVisible,
                     useDryRunMessageHistory: this.sandboxCheckbox.checked
                 };
@@ -1014,7 +1058,7 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
                 this.SaveUIStateToLocalStorage();
                 this.RunQuery();
             };
-            this.SendLimitChanged = () => {
+            this.UpdateSendButtonText = () => {
                 let count = this.GetSendCount();
                 if (count !== null) {
                     let msg = `Send To ${count} Follower`;
@@ -1024,6 +1068,9 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
                 }
                 else
                     this.sendButton.innerHTML = `Send To All Followers`;
+            };
+            this.SendLimitChanged = () => {
+                this.UpdateSendButtonText();
                 this.SaveUIStateToLocalStorage();
             };
             this.SortChanged = () => {
@@ -1043,7 +1090,13 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
             this.parent = parent;
         }
         RenderResults(results) {
-            let html = '';
+            //we query for more results than we are going to display so that
+            //if a message send is initiated, we have extra entries to fill in
+            //the bottom as they disappear from the top
+            this.extraRows = new Array();
+            this.nextExtraRowToAppear = 0;
+            //remove all entries currently in the results div..
+            this.resultsDiv.innerHTML = '';
             for (var i = 0; i < results.followers.length; i++) {
                 let f = results.followers[i];
                 let imgUrl = f.profileImageUrl;
@@ -1052,18 +1105,29 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
                 let contactedString = 'No';
                 if (results.followers[i].contactDate)
                     contactedString = 'Yes';
-                html +=
-                    `<div id="row-${f.screenName}" class="followerRowDeleter">
-                <div class="followerRow" onclick="window.open('https://twitter.com/${f.screenName}', '_blank')">
+                let rowHtml = `<div class="followerRow" onclick="window.open('https://twitter.com/${f.screenName}', '_blank')">
                     <div class="followerIcon"><img class="followerIconImg" src="${imgUrl}"></div>
                     <div class="followerName">${f.name}</div>
                     <div class="followerScreenName">${f.screenName}</div>
                     <div class="followerFollowersCount">${f.followersCount}</div>
                     <div id="contacted-${f.screenName}" class="followerContacted">${contactedString}</div>
-                </div>
                 </div>`;
+                //`<div id="row-${f.screenName}" class="followerRowDeleter">${rowHtml}</div>`;
+                let rowDiv = document.createElement('div');
+                rowDiv.id = `row-${f.screenName}`;
+                rowDiv.className = "followerRowDeleter";
+                rowDiv.innerHTML = rowHtml;
+                if (i < this.numResultsToDisplay) {
+                    this.resultsDiv.appendChild(rowDiv);
+                }
+                else {
+                    //these are the rows we wont display yet.. when they start sending messages,
+                    //they'll be added to the bottom of the resultsDiv as the ones on top
+                    //disappear
+                    //
+                    this.extraRows.push(rowDiv);
+                }
             }
-            this.resultsDiv.innerHTML = html;
         }
         ConvertUIStateToCampaign() {
             var sort = this.sortElement.value;
@@ -1096,7 +1160,7 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
             }
         }
         UpdateContactedButton(showContacted) {
-            if (showContacted) {
+            if (showContacted === false) {
                 this.toggleContactedButton.innerHTML = "Show Contacted";
             }
             else {
@@ -1142,6 +1206,7 @@ define("Renderer/QueryComponent", ["require", "exports", "Shared/RPC", "Shared/S
                 }
                 catch (err) { }
                 this.UpdateContactedButton(this.contactedVisible);
+                this.UpdateSendButtonText();
             }
             catch (err) {
                 console.log("LoadUIStateFromLocalStorage error:");
@@ -1194,7 +1259,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                     <div style="margin-left: 16px; flex-grow:1"><input style="margin-left:0" id="sandboxCheckbox" type="checkbox" checked>Sandbox<br/><button id="sendButton" style="width:100%">Send To 1 Follower</button></div>
                 </div>
                 <br/>
-
+                <div id="waitingMessage"></div>
             </div>
             <div class="followerHeaderRow">
                 <div class="followerIcon">&nbsp</div>
@@ -1212,6 +1277,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
             this.tagsElement = em.querySelector('#tags');
             this.messageElement = em.querySelector('#message');
             this.sandboxCheckbox = em.querySelector('#sandboxCheckbox');
+            this.waitingMessage = em.querySelector('#waitingMessage');
             this.toggleContactedButton = em.querySelector('#toggleContactedButton');
             this.sendButton = em.querySelector('#sendButton');
             this.sendLimit = em.querySelector('#sendLimit');
@@ -1233,9 +1299,60 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
             RPC.SetHandler(ClientApi.NotifyMessageCampaignStoppedCall, async (c) => {
                 this.sendButton.disabled = false;
                 this.campaignRunning = false;
+                setTimeout(() => {
+                    //now that the campaign is over we should require to be sure we're displaying things accurately -
+                    //and also, we need to refill our 'extraRows' buffer so we have rows to fill in on the bottom
+                    //when more messages are sent
+                    this.RunQuery();
+                    //we delay by the row dletion time so that the query doesnt happen until the
+                    //last animation is finished
+                }, this.rowDeletionAnimationTime);
+                return { success: true };
+            });
+            RPC.SetHandler(ClientApi.NotifyMessageCampaignWaitingCall, async (c) => {
+                this.waitingMessage.innerHTML =
+                    `<div>
+                    <div style="display:flex; align-items:center">
+                        <div style="display:inline-block; margin-right: 4px; width:16px; height:16px; border-radius:20px; background-color:#F00"></div>
+                        <span style="position:relative; top:1px">Sending limit reached, attempting next send in <span id="timeLeft"></span></span>
+                    </div>
+                </div><br/>`;
+                //count down the time..
+                let timeLeftSpan = this.waitingMessage.querySelector('#timeLeft');
+                let updateTimeShown = () => {
+                    let millisLeft = c.args.estimatedSendDate - new Date().getTime();
+                    let millisPerHour = 1000 * 60 * 60;
+                    let millisPerMinute = 1000 * 60;
+                    let str = '';
+                    let hours = millisLeft / millisPerHour;
+                    let minutes = millisLeft / millisPerMinute;
+                    let seconds = Math.floor(millisLeft / 1000);
+                    if (hours > 1) {
+                        str = `${hours.toFixed(1)} hours`;
+                    }
+                    else if (minutes > 1) {
+                        str = `${minutes.toFixed(1)} minutes`;
+                    }
+                    else {
+                        str = `${seconds} seconds`;
+                    }
+                    timeLeftSpan.innerHTML = str;
+                    if (seconds <= 0)
+                        return false;
+                    else
+                        return true;
+                };
+                if (updateTimeShown()) {
+                    let interval = setInterval(() => {
+                        if (!updateTimeShown())
+                            clearInterval(interval);
+                    }, 1000);
+                }
                 return { success: true };
             });
             RPC.SetHandler(ClientApi.NotifyMessageSentCall, async (c) => {
+                //clear any waiting message that was previously displayed
+                this.waitingMessage.innerHTML = '';
                 //updated the Contacted column for this user to 'Yes'
                 let updateContactedElement = em.querySelector(`#contacted-${c.args.recipientScreenName}`);
                 if (updateContactedElement)
@@ -1248,8 +1365,18 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
                         updateContactedRow.style.opacity = '0';
                         updateContactedRow.style.maxHeight = '0px';
                         setTimeout(() => {
-                            updateContactedRow.parentElement.removeChild(updateContactedRow);
-                        }, 1500);
+                            this.resultsDiv.removeChild(updateContactedRow);
+                        }, this.rowDeletionAnimationTime);
+                        if (this.nextExtraRowToAppear < this.extraRows.length) {
+                            let e = this.extraRows[this.nextExtraRowToAppear];
+                            if (e) {
+                                //move the next row out of the extra row and to the bottom of the visible resultsDiv
+                                this.resultsDiv.appendChild(e);
+                                //clear our reference from the extraRows array
+                                this.extraRows[this.nextExtraRowToAppear] = null;
+                                this.nextExtraRowToAppear++;
+                            }
+                        }
                     }
                 }
                 return { success: true };
@@ -1259,6 +1386,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
             //dont need these notifications anymore
             RPC.SetHandler(ClientApi.NotifyMessageCampaignStartedCall, null);
             RPC.SetHandler(ClientApi.NotifyMessageCampaignStoppedCall, null);
+            RPC.SetHandler(ClientApi.NotifyMessageCampaignWaitingCall, null);
             RPC.SetHandler(ClientApi.NotifyMessageSentCall, null);
         }
     }
