@@ -37,7 +37,7 @@ Influencer Toolkit automates sending of direct messages to your Twitter follower
 2. `git clone https://github.com/treylorswift/InfluencerToolkitApp.git`
 3. `cd InfluencerToolkitApp`
 3. `npm install`
-4. `./node_modules/.bin/electron-rebuild` (native modules may need to be rebuilt for electron depending on your installed Node.JS version)
+4. `./node_modules/.bin/electron-rebuild` (Mac/Linux) or `node_modules\.bin\electron-rebuild` (Windows) - Native modules may need to be rebuilt for electron depending on your installed Node.JS version.
 5. Go to <https://developer.twitter.com/apps> and create a Twitter app for testing. Generate API keys with read, write, and Direct Message permissions.
 6. `npm start` to launch the app
 7. To package your own Electron app installer, use `npm run dist`
