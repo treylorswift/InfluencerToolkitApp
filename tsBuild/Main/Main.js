@@ -241,7 +241,7 @@ function createWindow() {
         }
     });
     exports.g_mainWindow = mainWindow;
-    //Menu.setApplicationMenu(null);
+    electron_2.Menu.setApplicationMenu(null);
     // and load the index.html of the app.
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
     //navigating seems to alter the window title.. can we please just keep it the way it should be? kthx
