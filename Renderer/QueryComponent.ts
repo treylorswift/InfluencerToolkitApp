@@ -1,6 +1,7 @@
 import * as RPC from "../Shared/RPC.js"
 import * as ServerApi from "../Shared/ServerApi.js"
 import * as ClientApi from "../Shared/ClientApi.js"
+import * as MessageTemplate from "../Shared/MessageTemplate.js"
 
 import { DOMComponent } from "./DOMComponent.js"
 import { HomePage } from "./HomePage.js"
@@ -175,15 +176,36 @@ export class QueryComponent extends DOMComponent
                 this.extraRows.push(rowDiv);
             }
         }
-
     }
 
-    ConvertUIStateToCampaign():ServerApi.MessagingCampaign
+
+
+    RunCampaign = async () =>
     {
+        if (this.campaignRunning)
+        {
+            this.DisplayModalMessage("Sending in progress, please wait for it to finish.");
+            return;
+        }
+
         var sort = this.sortElement.value as ServerApi.MessagingCampaignSortType;
         let tags = this.tagsElement.value.split(' ');
         let count = this.GetSendCount();
 
+        //test the expansion template (its gonna be called server side so better to
+        //inform the user of errors before sending)
+        let expansion:string = null;
+        try
+        {
+            let followerTwitterHandle = 'TestHandle';
+            expansion = MessageTemplate.Expand(this.messageElement.value, followerTwitterHandle);
+        }
+        catch (err)
+        {
+            this.DisplayModalMessage(`Error interpreting your message template:<br/><br/>${err.message}`);
+            return;
+        }
+        
         let campaign:ServerApi.MessagingCampaign =
         {
             message:this.messageElement.value,
@@ -197,21 +219,6 @@ export class QueryComponent extends DOMComponent
                 tags:tags
             }
         }
-
-        return campaign;
-    }
-
-
-
-    RunCampaign = async () =>
-    {
-        if (this.campaignRunning)
-        {
-            this.DisplayModalMessage("Sending in progress, please wait for it to finish.");
-            return;
-        }
-
-        let campaign = this.ConvertUIStateToCampaign();
 
         this.campaignRunning = true;
         this.sendButton.disabled = true;
@@ -284,6 +291,11 @@ export class QueryComponent extends DOMComponent
     {
         this.SaveUIStateToLocalStorage();
         this.RunQuery();
+    }
+
+    MessageChanged = ()=>
+    {
+        this.SaveUIStateToLocalStorage();
     }
 
     UpdateContactedButton(showContacted:boolean)
@@ -367,7 +379,7 @@ export class QueryComponent extends DOMComponent
     {
         return `Hey there, are you interested in receiving my newsletter?
 
-You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.screen_name}`;
+You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.screen_name}?twRef=\${receiverScreenName}`;
     }
 
     async Render(em:HTMLElement)
@@ -430,6 +442,7 @@ You can sign up at https://itk-signup.herokuapp.com/${this.parent.userLogin.scre
         this.MapEvent(em, "sortSelect", "change", this.SortChanged);
         this.MapEvent(em, "tags", "input", this.TagsChanged);
         this.MapEvent(em, "sendLimit", "input", this.SendLimitChanged);
+        this.MapEvent(em, "message", "change", this.MessageChanged);
         this.MapEvent(em, "sandboxCheckbox", "change", this.SandboxCheckboxChanged);
         this.MapEvent(em, 'toggleContactedButton', 'click',this.ToggleContacted);
         this.MapEvent(em, "sendButton", "click", this.RunCampaign);

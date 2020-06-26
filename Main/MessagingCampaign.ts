@@ -1,5 +1,6 @@
 import * as crypto from 'crypto'
 import * as DB from 'better-sqlite3';
+import * as MessageTemplate from '../Shared/MessageTemplate'
 
 import {FollowerCacheQuery, FollowerCacheQueryResult} from '../shared/ServerApi'
 import * as ClientApi from '../Shared/ClientApi';
@@ -190,6 +191,19 @@ export class MessagingCampaignManager
         {
             try
             {
+                //expand any templated variables that may be in the message - only one handled/expected is
+                //"followerTwitterHandle"
+                let message;
+                try
+                {
+                    message = MessageTemplate.Expand(this.campaign.message, recipient.screenName);
+                }
+                catch (err)
+                {
+                    //expansion failed
+                    return false;
+                }
+                
                 if (actuallySendMessage)
                 {
                     let params = 
@@ -200,7 +214,7 @@ export class MessagingCampaignManager
                             message_create:
                             {
                                 target: { recipient_id: recipient.idStr },
-                                message_data: { text: this.campaign.message }
+                                message_data: { text: message }
                             }
                         }
                     }
@@ -456,12 +470,17 @@ export class MessageHistory
         //get the most recent 1000 messages sent
         try
         {
+            //get the most recent 1000 messages, they'll be ordered with newest messages at the front of the array
             let initCacheCmd = this.db.prepare(`SELECT * FROM ${this.tableName} WHERE campaign_id=? ORDER BY date DESC LIMIT 1000`);
-            let result = initCacheCmd.all([this.campaign.campaign_id]);
+            let results = initCacheCmd.all([this.campaign.campaign_id]);
 
-            for (var i=0; i<result.length; i++)
+            //we want our event list is to be ordered oldest (at the front of the array) to newest (at the end of the array)
+            //as messages get sent, they are .pushed onto the end. so we need to reverse the rows received from the DB
+            for (var i=0; i<results.length; i++)
             {
-                this.events.push({campaign_id:result[i].campaign_id,recipient:result[i].id_str,time:new Date(result[i].date)});
+                let r = results[results.length - i - 1];
+
+                this.events.push({campaign_id:r.campaign_id, recipient:r.id_str, time:new Date(r.date)});
             }
         }
         catch (err)

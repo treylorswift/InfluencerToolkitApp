@@ -16,7 +16,8 @@
         "../Shared/ElectronIPC.ts",
         "../Shared/ServerApi.ts",
         "../Shared/ClientApi.ts",
-        "../Shared/TwitterAuth.ts"
+        "../Shared/TwitterAuth.ts",
+        "../Shared/MessageTemplate.ts"
     ],
     "exclude": [
     ]

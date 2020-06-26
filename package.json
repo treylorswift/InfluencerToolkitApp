@@ -27,7 +27,16 @@
     "appId": "HDM.InfluencerToolkit",
     "mac": {
       "category": "public.app-category.business"
-    }
+    },
+    "files":[
+        "!Main/*",
+        "!Renderer/*",
+        "!Shared/*",
+        "!app_auth.json",
+        "!user_auth.json",
+        "!TwitterFollowerDB*",
+        "!ITKElectron.sln"
+    ]
   },
   "dependencies": {
     "better-sqlite3": "^7.1.0",
