@@ -1,6 +1,6 @@
 {
   "name": "InfluencerToolkit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Influencer Toolkit Desktop App",
   "main": "tsBuild/Main/Main.js",
   "scripts": {
